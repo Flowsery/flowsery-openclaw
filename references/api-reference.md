@@ -220,6 +220,57 @@ Generic breakdown by any dimension.
 
 All breakdown endpoints accept the same date range, pagination, and filter params. All return the same response structure with `data` array and `pagination`.
 
+### GET /issues
+
+Issues the AI found while analyzing session recordings: bugs, broken flows and UX problems. Deduplicated across sessions, so one row is one problem rather than one recording, and ranked by severity.
+
+**Query parameters** (beyond the website selector):
+
+- `status` — `open`, `in_progress`, `resolved`, `suspended`. Omit to get everything except suspended.
+- `severity` — `low`, `medium`, `high`, `critical`
+- `search` — matches issue title and description, max 200 characters
+- `sort` — `severity` (default) or `recency` (last seen)
+- `limit`, `offset`
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "iss_abc123",
+      "title": "Checkout button unresponsive on mobile Safari",
+      "severity": "critical",
+      "status": "open",
+      "sessionsAffected": 34,
+      "firstSeenAt": "2026-08-19T09:12:00.000Z",
+      "lastSeenAt": "2026-08-30T17:44:00.000Z"
+    }
+  ],
+  "counts": { "open": 12, "inProgress": 3, "resolved": 41 },
+  "pagination": { "limit": 100, "offset": 0, "total": 56 }
+}
+```
+
+`counts` covers the whole site, not the current page, so it answers "how are we doing" without a second call.
+
+Suspended issues are excluded unless `status=suspended` asks for them. An issue that seems to have vanished was probably suspended rather than deleted.
+
+### GET /issues/:issueId
+
+Full detail for one issue: every occurrence the AI flagged, the sessions behind it, steps to replicate, comments, and any linked external ticket.
+
+Session detail can name pages, referrers and geography. Treat it as you would a visitor profile, and surface the minimum needed to answer the question.
+
+### PATCH /issues/:issueId
+
+**Request:** `{ "status": "in_progress" }`
+
+Accepts `open`, `in_progress`, `resolved` and `suspended`. Reversible, unlike the delete endpoints below, so moving an issue is safe.
+
+`suspended` hides the issue from default listings and stops it resurfacing, which is the right choice for a known non-problem. `resolved` states the underlying bug is fixed. They are not interchangeable, so ask which one the user means rather than guessing.
+
 ### GET /visitors/:visitorId
 
 Fetch full visitor profile.
@@ -415,6 +466,27 @@ Delete payment records by filter.
 ```
 
 **WARNING:** Without a date range, matching records are deleted across the entire history.
+
+## Rate limits
+
+600 requests per minute per API token, counted on a hash of the token rather than on IP.
+
+Every response carries the RFC 9331 headers:
+
+```
+RateLimit-Policy: "flowsery-api";q=600;w=60
+RateLimit-Limit: 600
+RateLimit-Remaining: 587
+RateLimit-Reset: 43
+```
+
+A `429` adds `Retry-After` in seconds. Wait it out rather than retrying immediately.
+
+Breakdowns over a wide date range are the usual reason an agent hits this. Ask for a coarser interval or a narrower range instead of paginating hard.
+
+## GET /openapi.json
+
+The full OpenAPI 3 spec, and the one endpoint that needs no authentication, so automation platforms can import it without a token.
 
 ## Error Responses
 

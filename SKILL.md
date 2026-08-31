@@ -1,6 +1,6 @@
 ---
 name: flowsery
-description: Query web analytics data from Flowsery Analytics — a privacy-first web analytics platform. Retrieve real-time visitors, time series, breakdowns (device, page, country, referrer, campaign, channel, exit link, and 24 dimensions total), and visitor profiles with activity timelines. Also supports a small set of write operations that require explicit user confirmation: creating custom goal/payment records, and permanently (irreversibly) deleting goal events and payment records. Visitor profiles and payments include personal data (email, name, location, revenue) — handle as PII. Use when the user wants to check their website traffic, analyze visitor behavior, view revenue data, track conversions, or manage goal/payment records on their Flowsery-tracked sites.
+description: Query web analytics data from Flowsery Analytics — a privacy-first web analytics platform. Retrieve real-time visitors, time series, breakdowns (device, page, country, referrer, campaign, channel, exit link, and 24 dimensions total), visitor profiles with activity timelines, and the bugs, broken flows and UX problems the AI found in session recordings. Also supports a small set of write operations that require explicit user confirmation: creating custom goal/payment records, and permanently (irreversibly) deleting goal events and payment records. Visitor profiles and payments include personal data (email, name, location, revenue) — handle as PII. Use when the user wants to check their website traffic, analyze visitor behavior, view revenue data, track conversions, or manage goal/payment records on their Flowsery-tracked sites.
 homepage: https://flowsery.com
 metadata: { 'openclaw': { 'emoji': '📊', 'primaryEnv': 'FLOWSERY_API_KEY', 'requires': { 'env': ['FLOWSERY_API_KEY'] } } }
 ---
@@ -18,6 +18,7 @@ This skill is read-only by default, but the API also exposes **write** and **irr
 - **Visitor profiles and payments are PII.** Profiles can contain email, name, geolocation, full page history, and revenue. Only retrieve an individual visitor profile when the user explicitly asks about a specific person/visitor, and confirm they are authorized to view it. Present the minimum detail needed to answer — do not dump full identity, contact, and activity timelines unless asked.
 - **Minimize personal data on writes.** When recording payments/goals, send only the fields required for the task. Do not add `email`, `name`, or `customerId` unless the user explicitly provides them and they are needed for attribution.
 - **Never expose API keys** in output, logs, or client-side code.
+- **Issue status is not deletion.** `PATCH /issues/:id` is reversible and safe. But `resolved` asserts the bug is fixed and `suspended` asserts it never mattered. Ask which the user means rather than choosing.
 
 ## Setup
 
@@ -31,6 +32,10 @@ This skill is read-only by default, but the API also exposes **write** and **irr
 
 Base URL: `https://analytics.flowsery.com/analytics/api/v1`
 Auth header: `Authorization: Bearer $FLOWSERY_API_KEY`
+
+Rate limit: 600 requests per minute per token. Every response carries `RateLimit-Remaining` and `RateLimit-Reset`; a `429` adds `Retry-After` in seconds. Wait it out instead of retrying straight away.
+
+`GET /openapi.json` is public and needs no token, so automation platforms can import the spec.
 
 Workspace API tokens use the `flow_ws_` prefix. Use these for API, MCP, OpenClaw, and multi-website access. Website API keys use the `flow_` prefix and are scoped to a single website, mainly for server-side custom goal and payment ingestion. Treat both like passwords — never expose them in client-side code.
 
@@ -122,7 +127,40 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
 
 See [references/breakdown-dimensions.md](references/breakdown-dimensions.md) for all 24 dimensions.
 
-### 7. Get a visitor profile
+### 7. Read AI-detected issues
+
+Flowsery analyzes session recordings and reports the bugs, broken flows and UX problems it finds. Issues are deduplicated across sessions, so one row is one problem rather than one recording.
+
+```bash
+curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
+  "https://analytics.flowsery.com/analytics/api/v1/issues?websiteId=WEBSITE_ID&severity=critical"
+```
+
+Each issue carries a title, severity (`low`, `medium`, `high`, `critical`), status, how many sessions hit it, and when it was first and last seen. The response also returns open, in-progress and resolved counts for the whole site, so "how are we doing" needs one call rather than three.
+
+Filter with `status`, `severity`, `search`, and sort by `severity` (default) or `recency`. Suspended issues are hidden unless you ask for them, so an issue that appears to have vanished was probably suspended rather than deleted.
+
+For one issue in full, including the sessions behind it and steps to replicate:
+
+```bash
+curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
+  "https://analytics.flowsery.com/analytics/api/v1/issues/ISSUE_ID?websiteId=WEBSITE_ID"
+```
+
+> Session detail names pages, referrers and geography. Treat it with the same care as a visitor profile and surface only what answers the question.
+
+Move an issue through its workflow:
+
+```bash
+curl -X PATCH "https://analytics.flowsery.com/analytics/api/v1/issues/ISSUE_ID?websiteId=WEBSITE_ID" \
+  -H "Authorization: Bearer $FLOWSERY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "in_progress"}'
+```
+
+This is reversible, unlike the delete endpoints further down, so moving an issue is safe. But `resolved` and `suspended` say different things. `resolved` claims the bug is fixed; `suspended` says it is a known non-problem and should stop resurfacing. Ask which one the user means rather than picking for them.
+
+### 8. Get a visitor profile
 
 > ⚠️ **PII.** This endpoint returns personal data about an individual (email, name, city/region, full page history, revenue). Only call it when the user explicitly asks about a specific visitor, confirm they are authorized to view that person's data, and present the minimum detail that answers the question — don't dump the full identity and activity timeline unless asked.
 
@@ -142,7 +180,7 @@ Returns comprehensive visitor data:
 
 The visitor ID comes from the `_fs_vid` browser cookie set by the Flowsery tracking script.
 
-### 8. Track a custom goal
+### 9. Track a custom goal
 
 ```bash
 curl -X POST https://analytics.flowsery.com/analytics/api/v1/goals \
@@ -162,7 +200,7 @@ curl -X POST https://analytics.flowsery.com/analytics/api/v1/goals \
 
 The visitor must have at least one recorded pageview before a goal can be created.
 
-### 9. Record a payment
+### 10. Record a payment
 
 > If you use Stripe, LemonSqueezy, or Polar, payments are tracked automatically when connected. Use this endpoint only for other providers.
 
@@ -184,7 +222,7 @@ curl -X POST https://analytics.flowsery.com/analytics/api/v1/payments \
 
 Required: `amount`, `currency`, `transactionId`. Optional: `visitorUid`, `sessionUid`, `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean).
 
-### 10. Delete goal events (irreversible — confirm first)
+### 11. Delete goal events (irreversible, confirm first)
 
 > 🛑 **Destructive.** This permanently erases historical goal data and cannot be undone. Before running it, restate the website, filters, and date range to the user and get explicit confirmation. Do not infer a DELETE from a vague "clean up"/"fix" request.
 
@@ -197,7 +235,7 @@ At least one filter required: `visitorId`, `name`, `startAt`, `endAt`.
 
 **WARNING**: Without a date range, matching records are deleted across the entire history. Never omit the date range unless the user has explicitly confirmed a full-history wipe.
 
-### 11. Delete payment records (irreversible — confirm first)
+### 12. Delete payment records (irreversible, confirm first)
 
 > 🛑 **Destructive.** This permanently erases historical payment/revenue data and cannot be undone. Before running it, restate the website, filters, and date range to the user and get explicit confirmation. Do not infer a DELETE from a vague "clean up"/"fix" request.
 
@@ -342,3 +380,6 @@ Do not poll the `realtime` endpoint more than once per 5 seconds.
 | "Break down traffic by country"    | Call `countries`                                                                            |
 | "Show me mobile vs desktop"        | Call `devices`                                                                              |
 | "What campaigns are working?"      | Call `campaigns` or `breakdown?dimension=utm_source`                                        |
+| "What's broken on my site?"        | Call `issues` sorted by severity                                                            |
+| "Any new bugs this week?"          | Call `issues` with `sort=recency`                                                           |
+| "Mark that issue as fixed"         | Call `PATCH /issues/{id}`, but ask whether they mean `resolved` or `suspended`              |

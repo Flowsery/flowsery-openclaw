@@ -1,0 +1,96 @@
+{
+  "id": "flowsery",
+  "name": "Flowsery",
+  "description": "Query privacy-first web analytics: visitors, trends, 24 breakdown dimensions, live visitors, and the issues AI found in session recordings.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "Flowsery workspace API token (flow_ws_...). Create one at https://flowsery.com under API Tokens."
+      },
+      "baseUrl": {
+        "type": "string",
+        "description": "API base URL. Only change this for local development.",
+        "default": "https://analytics.flowsery.com/analytics/api/v1"
+      }
+    },
+    "required": [
+      "apiKey"
+    ]
+  },
+  "contracts": {
+    "tools": [
+      "flowsery_websites",
+      "flowsery_overview",
+      "flowsery_timeseries",
+      "flowsery_breakdown",
+      "flowsery_realtime",
+      "flowsery_issues"
+    ]
+  },
+  "toolMetadata": {
+    "flowsery_websites": {
+      "configSignals": [
+        {
+          "rootPath": "plugins.entries.flowsery.config",
+          "required": [
+            "apiKey"
+          ]
+        }
+      ]
+    },
+    "flowsery_overview": {
+      "configSignals": [
+        {
+          "rootPath": "plugins.entries.flowsery.config",
+          "required": [
+            "apiKey"
+          ]
+        }
+      ]
+    },
+    "flowsery_timeseries": {
+      "configSignals": [
+        {
+          "rootPath": "plugins.entries.flowsery.config",
+          "required": [
+            "apiKey"
+          ]
+        }
+      ]
+    },
+    "flowsery_breakdown": {
+      "configSignals": [
+        {
+          "rootPath": "plugins.entries.flowsery.config",
+          "required": [
+            "apiKey"
+          ]
+        }
+      ]
+    },
+    "flowsery_realtime": {
+      "configSignals": [
+        {
+          "rootPath": "plugins.entries.flowsery.config",
+          "required": [
+            "apiKey"
+          ]
+        }
+      ]
+    },
+    "flowsery_issues": {
+      "configSignals": [
+        {
+          "rootPath": "plugins.entries.flowsery.config",
+          "required": [
+            "apiKey"
+          ]
+        }
+      ]
+    }
+  }
+}
