@@ -1,6 +1,6 @@
 # Breakdown Dimensions Reference
 
-Use these values with the `GET /breakdown?dimension=<value>` endpoint, or use the dedicated shortcut endpoints listed below.
+Use these values with the `GET /breakdown?dimension=<value>` endpoint, or use the dedicated shortcut endpoints listed below. Both return the same rows: `value`, `visitors`, `revenue` and `percentage`, ordered by visitors descending, with `pagination.total`. Dimensions without a shortcut are only reachable through `/breakdown`.
 
 ## Dimensions
 
@@ -43,7 +43,9 @@ These dimensions relate to URL parameters used for attribution:
 - `ref` — Custom referrer tag (e.g. `?ref=partner123`)
 - `source` — Custom source tag (e.g. `?source=homepage_banner`)
 
-Use `all_params` to see a combined count across all tracking parameter dimensions.
+Use `all_params` to see a combined count across all tracking parameter dimensions. Only tagged visits appear in any of these; `channel` and `referrer` cover untagged traffic too.
+
+Geography comes in three granularities (`country`, `region`, `city`); add `filter_country` to drill into one country. `browser` and `os` return names only, `browser_version` and `os_version` add the version.
 
 ## Marketing Channel Classification
 

@@ -48,8 +48,10 @@ Fetch aggregated analytics metrics for your website.
 
 **Notes:**
 
-- Returns all-time data when no date range specified
+- Without `startAt`/`endAt` the window is the last 30 days ending now, not all time
+- Every `filter_*` param narrows the single row; filters combine with AND
 - Conversion rate is a percentage (1.15 = 1.15%)
+- Use `/timeseries` for the trend and a breakdown endpoint for a split by dimension
 
 ### GET /timeseries
 
@@ -97,6 +99,7 @@ Fetch time series analytics data grouped by interval.
 **Notes:**
 
 - Same-day queries auto-upgrade to hourly granularity
+- Dates default to the last 30 days; match `interval` to the range, since hourly buckets across a year return thousands of points
 - Revenue always includes `revenueBreakdown` with new, renewal, refund
 - Timestamps follow ISO 8601
 
@@ -113,13 +116,45 @@ Fetch current active visitor count (activity within last 5 minutes).
 }
 ```
 
-No date range params supported — always returns current activity.
+No date range, filter or pagination params — always returns current activity, with no history. Use `/timeseries?interval=hour` for the recent trend. Poll at most once every 5 seconds.
+
+### GET /realtime/map
+
+Visitors active in the last 5 minutes with their location, for a live map. Same params as `/realtime` (website selector only). Returns up to 1000 visitors.
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "visitorId": "v_123",
+      "country": "Germany",
+      "countryCode": "DE",
+      "city": "Berlin",
+      "latitude": 52.52,
+      "longitude": 13.405,
+      "browser": "Chrome",
+      "os": "macOS",
+      "deviceType": "Desktop",
+      "currentUrl": "/pricing",
+      "referrerSource": "Google",
+      "pageviews": 3,
+      "totalRevenue": 0,
+      "isCustomer": false
+    }
+  ]
+}
+```
+
+`name` and `email` appear only for identified visitors. Use `/countries` or `/cities` for geography over a date range.
 
 ### GET /metadata
 
 Fetch website configuration metadata.
 
-With a workspace token, pass `websiteId` or `domain`. Without a selector, `/metadata` returns the same website list as `/websites`.
+With a workspace token, pass `websiteId` or `domain`. Without a selector, `/metadata` returns the same website list as `/websites`, so use `/websites` for discovery and `/metadata` once you know the site. Read `timezone` and `currency` here before running date-range reports.
 
 **Response:**
 
@@ -152,9 +187,9 @@ Fields:
 
 ### GET /pages
 
-Top pages by visitor count.
+Page paths ranked by visitors. Use `/breakdown?dimension=entry_page` for landing pages and `exit_link` for outbound clicks; `/hostnames` when the site serves several domains.
 
-**Query parameters:** Standard date range, pagination, and all filter params.
+**Query parameters:** Standard date range (default: last 30 days), pagination (`limit` default 100, max 1000), and all filter params.
 
 **Response:**
 
@@ -166,49 +201,51 @@ Top pages by visitor count.
 }
 ```
 
+Every row in `data` carries `value`, `visitors`, `revenue` and `percentage`, ordered by visitors descending; `pagination.total` is the full row count.
+
 ### GET /referrers
 
-Traffic sources (referrer domains).
+Referring domains ranked by visitors. Use `/channels` for the same traffic grouped into GA4-aligned channels, and `/campaigns` or `/breakdown?dimension=utm_source` for traffic identified by UTM tags rather than referrer.
 
 ### GET /countries
 
-Visitors by country.
+Visitors by country. Coarsest of the three geographic reports; add `filter_country` to `/regions` or `/cities` to drill into one country.
 
 ### GET /regions
 
-Visitors by region/state.
+Visitors by region/state (ISO 3166-2 code such as `US-CA`).
 
 ### GET /cities
 
-Visitors by city.
+Visitors by city. Long tail: filter by country or region first, or raise `limit`.
 
 ### GET /devices
 
-Desktop vs mobile vs tablet breakdown.
+Desktop vs mobile vs tablet breakdown (three rows at most). Use `/browsers` or `/operating-systems` for the software split.
 
 ### GET /browsers
 
-Browser distribution (Chrome, Safari, Firefox, Edge, etc.).
+Browser names (Chrome, Safari, Firefox, Edge, etc.). Versions only via `/breakdown?dimension=browser_version`.
 
 ### GET /operating-systems
 
-OS distribution (Mac OS, Windows, iOS, Android, etc.).
+OS names (Mac OS, Windows, iOS, Android, etc.). Versions only via `/breakdown?dimension=os_version`.
 
 ### GET /campaigns
 
-UTM campaign performance.
+`utm_campaign` values ranked by visitors. Untagged traffic is absent; use `/breakdown` with `utm_source`, `utm_medium`, `utm_term`, `utm_content` or `all_params` for the other tracking parameters.
 
 ### GET /hostnames
 
-Traffic by hostname/domain.
+Visitors by hostname. Useful only for sites tracking several domains or subdomains.
 
 ### GET /channels
 
-Marketing channel breakdown (Organic Search, Paid Search, Social, Email, Direct, Referral, etc.).
+GA4-aligned channels (Organic Search, Paid Search, Organic Social, Paid Social, Email, Display, Referral, Direct, Affiliate, Video, SMS, Audio), classified from referrer domain and `utm_medium`/`utm_source`. Start here for the traffic mix.
 
 ### GET /goals
 
-Goal completion stats within date range.
+Every configured goal (including the auto-created `payment` and `free_trial` goals) with completions in the date range. `filter_*` narrows the visitors counted; `limit` and `offset` page the goal list. `/breakdown?dimension=goal` returns the same rows with revenue and percentage. Read-only: goals are created by `POST /goals`.
 
 ### GET /breakdown
 
@@ -230,7 +267,7 @@ Issues the AI found while analyzing session recordings: bugs, broken flows and U
 - `severity` — `low`, `medium`, `high`, `critical`
 - `search` — matches issue title and description, max 200 characters
 - `sort` — `severity` (default) or `recency` (last seen)
-- `limit`, `offset`
+- `limit` (default 100, max 1000), `offset`
 
 **Response:**
 
@@ -263,11 +300,13 @@ Full detail for one issue: every occurrence the AI flagged, the sessions behind 
 
 Session detail can name pages, referrers and geography. Treat it as you would a visitor profile, and surface the minimum needed to answer the question.
 
+Not paginated. An unknown id, or an issue from another website, returns `404 Issue not found`; on a free trial only the first 10 issues are unlocked and the rest return `403 Upgrade to view this issue`.
+
 ### PATCH /issues/:issueId
 
 **Request:** `{ "status": "in_progress" }`
 
-Accepts `open`, `in_progress`, `resolved` and `suspended`. Reversible, unlike the delete endpoints below, so moving an issue is safe.
+Accepts `open`, `in_progress`, `resolved` and `suspended`. Only the status changes; the response is the full updated issue. Reversible, unlike the delete endpoints below, so moving an issue is safe. Not a delete: issues cannot be removed through the API. Unknown ids return `404 Issue not found`.
 
 `suspended` hides the issue from default listings and stops it resurfacing, which is the right choice for a known non-problem. `resolved` states the underlying bug is fixed. They are not interchangeable, so ask which one the user means rather than guessing.
 
@@ -346,7 +385,9 @@ Fetch full visitor profile.
 
 - `profile` is null for anonymous visitors (only populated after `identify` call)
 - `timeToFirstConversion` is in seconds, or null if no payment recorded
-- `activityTimeline` is sorted newest-first
+- `activityTimeline` is sorted newest-first; `visitedPages`, `completedCustomGoals` and the timeline hold the 100 most recent items each
+- An unknown id, or a visitor belonging to another website, returns `404 Visitor not found`
+- For questions about many visitors use the aggregate endpoints, not this one
 
 ### POST /goals
 
@@ -367,8 +408,8 @@ Track a custom goal event.
 
 **Fields:**
 
-- `visitorUid` (string, recommended): Visitor ID from `_fs_vid` browser cookie
-- `name` (string, required): Goal name — lowercase letters, numbers, underscores, hyphens only; max 64 chars
+- `visitorUid` (string, recommended): the `_fs_vid` cookie value of a visitor the tracking script has already seen, so the completion attaches to that visitor's sessions and source. Omit it for an anonymous completion.
+- `name` (string, required): Goal name — lowercase letters, numbers, underscores, hyphens only; max 64 chars. The goal is created on first use.
 - `metadata` (object, optional): Up to 10 key-value pairs. Keys: lowercase, max 64 chars. Values: max 255 chars. HTML stripped.
 
 **Response (200 OK):**
@@ -380,7 +421,9 @@ Track a custom goal event.
 }
 ```
 
-**Errors:** `400` if visitor is a bot. `404` if no pageview exists for the visitor.
+**Behavior:** each call appends one completion, so repeating it counts the goal twice. The completion is buffered and appears in `/goals` shortly after. Use `POST /payments` for revenue, which records a `payment` goal on its own.
+
+**Errors:** `400` on an invalid `name` or more than 10 `metadata` keys.
 
 ### POST /payments
 
@@ -417,6 +460,13 @@ Record a payment for revenue attribution.
 }
 ```
 
+**Behavior:**
+
+- `transactionId` must be unique. A repeated id is rejected, not deduplicated.
+- A new payment also records a `payment` goal completion (`free_trial` when `amount` is 0). `isRenewal: true` counts the revenue but skips that goal.
+- `isRefund: true` with an existing `transactionId` marks that payment refunded by `amount` instead of creating a new record. Prefer this over `DELETE /payments` when the charge should stay in history.
+- Attribution looks up a known visitor by `visitorUid`, then `customerId` or `email`. With no match the revenue is still recorded but its source, country and device show as Unknown.
+
 **Note:** Stripe, LemonSqueezy, and Polar payments are tracked automatically when connected — only use this for other providers.
 
 ### DELETE /goals
@@ -427,10 +477,12 @@ Delete custom goal events by filter.
 
 **Query parameters (at least one required):**
 
-- `visitorId` (string): Delete goals for a specific visitor
-- `name` (string): Delete goals matching event name
-- `startAt` (string): ISO 8601 start timestamp
-- `endAt` (string): ISO 8601 end timestamp
+- `visitorId` (string): Delete completions of a specific visitor
+- `name` (string): Delete completions of this goal name
+- `startAt` (string): ISO 8601 start timestamp, inclusive; may be used without `endAt`
+- `endAt` (string): ISO 8601 end timestamp, inclusive; may be used without `startAt`
+
+Filters combine with AND. Only completions are removed: the goal definition stays and `/goals` still lists it. The response carries the number deleted.
 
 **Response (200 OK):**
 
@@ -451,10 +503,12 @@ Delete payment records by filter.
 
 **Query parameters (at least one required):**
 
-- `transactionId` (string): Delete specific transaction
+- `transactionId` (string): Delete the single payment with this id
 - `visitorId` (string): Delete all payments for a visitor
-- `startAt` (string): ISO 8601 start timestamp
-- `endAt` (string): ISO 8601 end timestamp
+- `startAt` (string): ISO 8601 start timestamp, inclusive; may be used without `endAt`
+- `endAt` (string): ISO 8601 end timestamp, inclusive; may be used without `startAt`
+
+Filters combine with AND. The revenue disappears from every report and visitor profile; to reverse a charge while keeping history, use `POST /payments` with `isRefund: true` instead. The response carries the number deleted.
 
 **Response (200 OK):**
 
