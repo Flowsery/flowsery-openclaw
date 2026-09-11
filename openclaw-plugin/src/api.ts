@@ -1,7 +1,7 @@
-const DEFAULT_BASE_URL = "https://analytics.flowsery.com/analytics/api/v1";
+export const API_BASE_URL = "https://analytics.flowsery.com/analytics/api/v1";
 const TOKEN_PREFIX = "flow_ws_";
 
-export type PluginConfig = { apiKey?: string; baseUrl?: string };
+export type PluginConfig = { apiKey?: string };
 
 export function readConfig(api: { config?: unknown }): PluginConfig {
   const root = api.config as
@@ -45,7 +45,7 @@ export async function callApi(
   options: { body?: unknown; query?: Record<string, unknown>; signal?: AbortSignal } = {},
 ): Promise<unknown> {
   const token = requireToken(cfg);
-  const url = `${cfg.baseUrl || DEFAULT_BASE_URL}${path}${options.query ? buildQuery(options.query) : ""}`;
+  const url = `${API_BASE_URL}${path}${options.query ? buildQuery(options.query) : ""}`;
 
   const res = await fetch(url, {
     method,
@@ -54,6 +54,7 @@ export async function callApi(
       "Content-Type": "application/json",
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
+    redirect: "error",
     signal: options.signal,
   });
 
