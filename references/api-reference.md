@@ -3,7 +3,32 @@
 Base URL: `https://analytics.flowsery.com/analytics/api/v1`
 Auth: `Authorization: Bearer <api-key>` header. Workspace API tokens start with `flow_ws_` and can list/access all websites in the workspace. Website API keys start with `flow_` and access one website only.
 
+Every endpoint also accepts an optional `X-Workspace-Id` header. An OAuth sign-in uses it to pick one of several workspaces; an API token or website key belongs to one workspace, so send its own id or leave the header out. Any other id answers `403` with `code: workspace_access_denied`.
+
 ## Endpoints
+
+### GET /workspaces
+
+The workspaces the caller can act in.
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "ws_123",
+      "name": "Acme",
+      "organization": { "id": "org_1", "name": "Acme Inc" },
+      "role": { "key": "editor", "name": "Editor" },
+      "permissions": ["flowsery.write"],
+      "isDefault": true,
+      "current": true
+    }
+  ]
+}
+```
+
+A workspace token lists only its own workspace. A website key (`flow_`) answers `400`: it belongs to one website, not a workspace. `current` marks the workspace the call landed in.
 
 ### GET /websites
 
@@ -19,7 +44,6 @@ Fetch aggregated analytics metrics for your website.
 
 **Query parameters:**
 
-- `fields` (string, optional): Comma-separated list of metrics. Accepted: `visitors`, `sessions`, `bounce_rate`, `avg_session_duration`, `currency`, `revenue`, `revenue_per_visitor`, `conversion_rate`. Omit to receive all.
 - `startAt` (string, optional): ISO 8601 start date
 - `endAt` (string, optional): ISO 8601 end date
 - `timezone` (string, optional): IANA timezone. Falls back to site default.
@@ -35,12 +59,18 @@ Fetch aggregated analytics metrics for your website.
     {
       "visitors": 12450,
       "sessions": 16890,
-      "bounce_rate": 65.32,
-      "avg_session_duration": 245678.45,
-      "currency": "$",
+      "bounceRate": 65.32,
+      "avgSessionDuration": 246,
+      "avgEngagedTime": 71,
       "revenue": 28450,
-      "revenue_per_visitor": 2.29,
-      "conversion_rate": 1.15
+      "renewalRevenue": 5201,
+      "refundedRevenue": 0,
+      "revenuePerVisitor": 2.29,
+      "conversionRate": 1.15,
+      "kpiValue": 28450,
+      "kpiPerVisitor": 2.29,
+      "kpiConversionRate": 1.15,
+      "currency": "USD"
     }
   ]
 }
@@ -50,7 +80,8 @@ Fetch aggregated analytics metrics for your website.
 
 - Without `startAt`/`endAt` the window is the last 30 days ending now, not all time
 - Every `filter_*` param narrows the single row; filters combine with AND
-- Conversion rate is a percentage (1.15 = 1.15%)
+- `bounceRate` and `conversionRate` are percentages (1.15 = 1.15%); `avgSessionDuration` and `avgEngagedTime` are seconds
+- There is no field selector: every call returns the whole row
 - Use `/timeseries` for the trend and a breakdown endpoint for a split by dimension
 
 ### GET /timeseries
@@ -59,10 +90,9 @@ Fetch time series analytics data grouped by interval.
 
 **Query parameters:**
 
-- `fields` (string): Comma-separated metrics: `visitors`, `sessions`, `revenue`, `conversion_rate`, `name`
 - `interval` (string, optional): `hour`, `day`, `week`, `month`. Default: `day`
-- `startAt`, `endAt`, `timezone`, `limit`, `offset` — standard params
-- `websiteId` or `domain` — required for workspace tokens
+- `startAt`, `endAt`, `timezone`: standard params
+- `websiteId` or `domain`: required for workspace tokens
 - All filter params
 
 **Response:**
@@ -70,37 +100,37 @@ Fetch time series analytics data grouped by interval.
 ```json
 {
   "status": "success",
-  "fields": ["visitors", "sessions", "revenue"],
   "interval": "day",
   "timezone": "America/New_York",
-  "currency": "$",
+  "currency": "USD",
+  "data": [
+    {
+      "timestamp": "2025-12-17T05:00:00.000Z",
+      "name": "17 Dec",
+      "visitors": 528,
+      "sessions": 604,
+      "revenue": 0,
+      "newRevenue": 0,
+      "renewalRevenue": 0,
+      "refundedRevenue": 0,
+      "conversionRate": 0,
+      "kpiValue": 0
+    }
+  ],
   "totals": {
     "visitors": 14213,
     "sessions": 20181,
-    "revenue": 27351,
-    "revenueBreakdown": { "new": 22150.0, "renewal": 5201.0, "refund": 0.0 },
-    "conversion_rate": 1.92
+    "revenue": 27351
   },
-  "data": [
-    {
-      "visitors": 528,
-      "name": "17 Dec",
-      "sessions": 604,
-      "revenue": 0,
-      "revenueBreakdown": { "new": 0.0, "renewal": 0.0, "refund": 0.0 },
-      "conversion_rate": 0,
-      "timestamp": "2025-12-17T00:00:00+05:30"
-    }
-  ],
   "pagination": { "limit": 100, "offset": 0, "total": 30 }
 }
 ```
 
 **Notes:**
 
-- Same-day queries auto-upgrade to hourly granularity
 - Dates default to the last 30 days; match `interval` to the range, since hourly buckets across a year return thousands of points
-- Revenue always includes `revenueBreakdown` with new, renewal, refund
+- Each point splits revenue into `newRevenue`, `renewalRevenue` and `refundedRevenue`
+- `limit` and `offset` do not page the buckets; `pagination.total` is the bucket count
 - Timestamps follow ISO 8601
 
 ### GET /realtime
@@ -116,7 +146,7 @@ Fetch current active visitor count (activity within last 5 minutes).
 }
 ```
 
-No date range, filter or pagination params — always returns current activity, with no history. Use `/timeseries?interval=hour` for the recent trend. Poll at most once every 5 seconds.
+No date range, filter or pagination params: it always returns current activity, with no history. Use `/timeseries?interval=hour` for the recent trend. Poll at most once every 5 seconds.
 
 ### GET /realtime/map
 
@@ -148,7 +178,7 @@ Visitors active in the last 5 minutes with their location, for a live map. Same 
 }
 ```
 
-`name` and `email` appear only for identified visitors. Use `/countries` or `/cities` for geography over a date range.
+Fields with no value are left out. `name` and `email` appear only for visitors with a recorded payment that carried them; the MCP server strips them, along with `totalRevenue` and `isCustomer`. Use `/countries` or `/cities` for geography over a date range.
 
 ### GET /metadata
 
@@ -165,7 +195,6 @@ With a workspace token, pass `websiteId` or `domain`. Without a selector, `/meta
     {
       "domain": "example.com",
       "timezone": "America/New_York",
-      "name": "My Website",
       "logo": "https://cdn.example.com/logo.png",
       "kpiColorScheme": "orange",
       "kpi": "signup",
@@ -179,7 +208,6 @@ Fields:
 
 - `domain` (string): Website domain
 - `timezone` (string): IANA timezone
-- `name` (string): Display name
 - `logo` (string|null): Custom logo URL
 - `kpiColorScheme` (string): KPI color: red, orange, yellow, green, purple, pink, gray, blue, teal, indigo
 - `kpi` (string|null): Custom KPI goal name
@@ -205,7 +233,7 @@ Every row in `data` carries `value`, `visitors`, `revenue` and `percentage`, ord
 
 ### GET /referrers
 
-Referring domains ranked by visitors. Use `/channels` for the same traffic grouped into GA4-aligned channels, and `/campaigns` or `/breakdown?dimension=utm_source` for traffic identified by UTM tags rather than referrer.
+Referrers ranked by visitors: a source name such as `Google` or `ChatGPT` for recognized sites, otherwise the domain. Use `/channels` for the same traffic grouped into GA4-aligned channels, and `/campaigns` or `/breakdown?dimension=utm_source` for traffic identified by UTM tags rather than referrer.
 
 ### GET /countries
 
@@ -213,7 +241,7 @@ Visitors by country. Coarsest of the three geographic reports; add `filter_count
 
 ### GET /regions
 
-Visitors by region/state (ISO 3166-2 code such as `US-CA`).
+Visitors by region or state name (such as `California`).
 
 ### GET /cities
 
@@ -221,7 +249,7 @@ Visitors by city. Long tail: filter by country or region first, or raise `limit`
 
 ### GET /devices
 
-Desktop vs mobile vs tablet breakdown (three rows at most). Use `/browsers` or `/operating-systems` for the software split.
+`Desktop` vs `Mobile` vs `Tablet` breakdown (three rows at most). Filter values are case-sensitive, so `filter_device=Mobile`. Use `/browsers` or `/operating-systems` for the software split.
 
 ### GET /browsers
 
@@ -263,10 +291,10 @@ Issues the AI found while analyzing session recordings: bugs, broken flows and U
 
 **Query parameters** (beyond the website selector):
 
-- `status` — `open`, `in_progress`, `resolved`, `suspended`. Omit to get everything except suspended.
-- `severity` — `low`, `medium`, `high`, `critical`
-- `search` — matches issue title and description, max 200 characters
-- `sort` — `severity` (default) or `recency` (last seen)
+- `status`: `open`, `in_progress`, `resolved`, `suspended`. Omit to get everything except suspended.
+- `severity`: `low`, `medium`, `high`, `critical`
+- `search`: matches issue title and description, max 200 characters
+- `sort`: `severity` (default) or `recency` (last seen)
 - `limit` (default 100, max 1000), `offset`
 
 **Response:**
@@ -277,12 +305,16 @@ Issues the AI found while analyzing session recordings: bugs, broken flows and U
   "data": [
     {
       "id": "iss_abc123",
+      "websiteId": "site_123",
       "title": "Checkout button unresponsive on mobile Safari",
+      "description": "Tapping Pay does nothing on iOS Safari",
       "severity": "critical",
       "status": "open",
-      "sessionsAffected": 34,
+      "sessionsCount": 34,
       "firstSeenAt": "2026-08-19T09:12:00.000Z",
-      "lastSeenAt": "2026-08-30T17:44:00.000Z"
+      "lastSeenAt": "2026-08-30T17:44:00.000Z",
+      "stepsToReplicate": ["Open /checkout on iOS Safari", "Tap Pay"],
+      "sampleRecordingId": "rec_789"
     }
   ],
   "counts": { "open": 12, "inProgress": 3, "resolved": 41 },
@@ -290,7 +322,7 @@ Issues the AI found while analyzing session recordings: bugs, broken flows and U
 }
 ```
 
-`counts` covers the whole site, not the current page, so it answers "how are we doing" without a second call.
+`counts` covers the whole site, not the current page, so it answers "how are we doing" without a second call. On a free trial the list and the counts cover only the first 10 issues.
 
 Suspended issues are excluded unless `status=suspended` asks for them. An issue that seems to have vanished was probably suspended rather than deleted.
 
@@ -306,7 +338,7 @@ Not paginated. An unknown id, or an issue from another website, returns `404 Iss
 
 **Request:** `{ "status": "in_progress" }`
 
-Accepts `open`, `in_progress`, `resolved` and `suspended`. Only the status changes; the response is the full updated issue. Reversible, unlike the delete endpoints below, so moving an issue is safe. Not a delete: issues cannot be removed through the API. Unknown ids return `404 Issue not found`.
+Accepts `open`, `in_progress`, `resolved` and `suspended`. Only the status changes; the response is the full updated issue. Reversible, unlike the delete endpoints below, so moving an issue is safe. Not a delete: issues cannot be removed through the API. Unknown ids return `404 Issue not found`, and a locked free-trial issue returns `403 Upgrade to view this issue`.
 
 `suspended` hides the issue from default listings and stops it resurfacing, which is the right choice for a known non-problem. `resolved` states the underlying bug is fixed. They are not interchangeable, so ask which one the user means rather than guessing.
 
@@ -314,7 +346,7 @@ Accepts `open`, `in_progress`, `resolved` and `suspended`. Only the status chang
 
 Fetch full visitor profile.
 
-> ⚠️ **PII.** The response contains personal data about an individual — email, name, geolocation (country/region/city), full page-visit history, and revenue. Only call this when the user explicitly asks about a specific visitor, confirm they are authorized to view it, and surface the minimum detail needed to answer rather than the full identity/activity timeline.
+> ⚠️ **PII.** The response contains personal data about an individual: email, name, geolocation (country/region/city), full page-visit history, and revenue. Only call this when the user explicitly asks about a specific visitor, confirm they are authorized to view it, and surface the minimum detail needed to answer rather than the full identity/activity timeline.
 
 **Response:**
 
@@ -326,11 +358,11 @@ Fetch full visitor profile.
     "identity": {
       "country": "South Korea",
       "countryCode": "KR",
-      "region": "KR-44",
+      "region": "South Chungcheong",
       "city": "Seosan City",
       "browser": { "name": "Chrome", "version": "133.0.0.0" },
       "os": { "name": "Mac OS", "version": "10.15.7" },
-      "device": { "type": "desktop" },
+      "device": { "type": "Desktop" },
       "viewport": { "width": 1728, "height": 998 }
     },
     "source": "youtube.com",
@@ -386,6 +418,7 @@ Fetch full visitor profile.
 - `profile` is null for anonymous visitors (only populated after `identify` call)
 - `timeToFirstConversion` is in seconds, or null if no payment recorded
 - `activityTimeline` is sorted newest-first; `visitedPages`, `completedCustomGoals` and the timeline hold the 100 most recent items each
+- The id is the visitor record id from `/realtime/map` or the dashboard visitor view, not the `_fs_vid` cookie value
 - An unknown id, or a visitor belonging to another website, returns `404 Visitor not found`
 - For questions about many visitors use the aggregate endpoints, not this one
 
@@ -409,8 +442,8 @@ Track a custom goal event.
 **Fields:**
 
 - `visitorUid` (string, recommended): the `_fs_vid` cookie value of a visitor the tracking script has already seen, so the completion attaches to that visitor's sessions and source. Omit it for an anonymous completion.
-- `name` (string, required): Goal name — lowercase letters, numbers, underscores, hyphens only; max 64 chars. The goal is created on first use.
-- `metadata` (object, optional): Up to 10 key-value pairs. Keys: lowercase, max 64 chars. Values: max 255 chars. HTML stripped.
+- `name` (string, required): Goal name: lowercase letters, numbers, underscores, hyphens only; max 64 chars. The goal is created on first use.
+- `metadata` (object, optional): Up to 10 string key-value pairs.
 
 **Response (200 OK):**
 
@@ -449,14 +482,16 @@ Record a payment for revenue attribution.
 
 **Required:** `amount` (number), `currency` (string), `transactionId` (string)
 
-**Optional:** `visitorUid`, `sessionUid`, `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean)
+**Optional:** `visitorUid`, `sessionUid`, `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean), `timestamp` (ISO 8601, defaults to now)
+
+An omitted `currency` is stored as `USD`, not the website currency, so always send it.
 
 **Response (200 OK):**
 
 ```json
 {
-  "message": "Payment recorded and attributed successfully",
-  "transaction_id": "payment_456"
+  "status": "success",
+  "data": [{ "message": "Payment recorded successfully" }]
 }
 ```
 
@@ -464,10 +499,10 @@ Record a payment for revenue attribution.
 
 - `transactionId` must be unique. A repeated id is rejected, not deduplicated.
 - A new payment also records a `payment` goal completion (`free_trial` when `amount` is 0). `isRenewal: true` counts the revenue but skips that goal.
-- `isRefund: true` with an existing `transactionId` marks that payment refunded by `amount` instead of creating a new record. Prefer this over `DELETE /payments` when the charge should stay in history.
+- `isRefund: true` with an existing `transactionId` marks that payment refunded by `amount` instead of creating a new record. A `transactionId` that belongs to another website answers `400`. Prefer this over `DELETE /payments` when the charge should stay in history.
 - Attribution looks up a known visitor by `visitorUid`, then `customerId` or `email`. With no match the revenue is still recorded but its source, country and device show as Unknown.
 
-**Note:** Stripe, LemonSqueezy, and Polar payments are tracked automatically when connected — only use this for other providers.
+**Note:** Stripe, LemonSqueezy, and Polar payments are tracked automatically when connected; only use this for other providers.
 
 ### DELETE /goals
 
@@ -489,7 +524,7 @@ Filters combine with AND. Only completions are removed: the goal definition stay
 ```json
 {
   "status": "success",
-  "data": [{ "deleted": 14, "message": "Goal events deleted successfully" }]
+  "data": [{ "deleted": 14, "message": "Goal completions deleted successfully" }]
 }
 ```
 
@@ -515,7 +550,7 @@ Filters combine with AND. The revenue disappears from every report and visitor p
 ```json
 {
   "status": "success",
-  "data": [{ "deleted": 3, "message": "Payment records deleted successfully" }]
+  "data": [{ "deleted": 3, "message": "Payments deleted successfully" }]
 }
 ```
 
@@ -544,16 +579,25 @@ The full OpenAPI 3 spec, and the one endpoint that needs no authentication, so a
 
 ## Error Responses
 
-- `400` — Invalid input, missing required parameters, or validation error
-- `401` — API key missing or invalid
-- `404` — Resource not found (unknown visitor, website not found)
-- `500` — Unexpected server error
+- `400`: invalid input, a workspace token with no `websiteId` or `domain`, a delete with no filter, or `GET /workspaces` with a website key
+- `401`: API key missing or invalid (`Invalid or missing analytics API key`)
+- `401` with `code: token_issuer_lost_access`: the member who created the token left the workspace or was deactivated
+- `403` with `code: subscription_required`: the workspace plan no longer includes API access
+- `403` with `code: workspace_access_denied`: `X-Workspace-Id` named a workspace the key does not belong to
+- `403` `Upgrade to view this issue`: a free-trial issue beyond the first 10
+- `404`: website, visitor or issue not found
+- `429`: rate limited, see above
+- `500`: unexpected server error
 
 **Example error:**
 
 ```json
 {
-  "status": "error",
-  "error": { "code": 401, "message": "Invalid or missing API key" }
+  "statusCode": 401,
+  "error": "Unauthorized",
+  "code": "token_issuer_lost_access",
+  "message": "This API key no longer works: the member who created it lost access to the workspace. Ask a workspace admin for a new key."
 }
 ```
+
+`code` appears only on the coded errors above.

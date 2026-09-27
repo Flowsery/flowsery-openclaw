@@ -1,22 +1,22 @@
 ---
 name: flowsery
-description: Query web analytics data from Flowsery Analytics — a privacy-first web analytics platform. Retrieve real-time visitors, time series, breakdowns (device, page, country, referrer, campaign, channel, exit link, and 24 dimensions total), visitor profiles with activity timelines, and the bugs, broken flows and UX problems the AI found in session recordings. Also supports a small set of write operations that require explicit user confirmation: creating custom goal/payment records, and permanently (irreversibly) deleting goal events and payment records. Visitor profiles and payments include personal data (email, name, location, revenue) — handle as PII. Use when the user wants to check their website traffic, analyze visitor behavior, view revenue data, track conversions, or manage goal/payment records on their Flowsery-tracked sites.
+description: Query web analytics data from Flowsery Analytics, a privacy-first web analytics platform. Retrieve real-time visitors, time series, breakdowns (device, page, country, referrer, campaign, channel, exit link, and 25 dimensions total), visitor profiles with activity timelines, and the bugs, broken flows and UX problems the AI found in session recordings. Also supports a small set of write operations that require explicit user confirmation: creating custom goal/payment records, and permanently (irreversibly) deleting goal events and payment records. Visitor profiles and payments include personal data (email, name, location, revenue), so handle them as PII. Use when the user wants to check their website traffic, analyze visitor behavior, view revenue data, track conversions, or manage goal/payment records on their Flowsery-tracked sites.
 homepage: https://flowsery.com
-version: 1.0.2
+version: 1.1.0
 metadata: { 'openclaw': { 'emoji': '📊', 'primaryEnv': 'FLOWSERY_API_KEY', 'requires': { 'env': ['FLOWSERY_API_KEY'] } } }
 ---
 
 # Flowsery Analytics
 
-Privacy-first web analytics. Query real-time visitors, breakdowns, time series, revenue, goals, and visitor profiles — all via one API.
+Privacy-first web analytics. Query real-time visitors, breakdowns, time series, revenue, goals, and visitor profiles, all via one API.
 
 ## Safety & Privacy (read first)
 
 This skill is read-only by default, but the API also exposes **write** and **irreversible delete** operations and returns **personal data**. Before acting, observe these rules:
 
 - **Destructive operations require confirmation.** `DELETE /goals` and `DELETE /payments` permanently erase historical business data and cannot be undone. Never run them as a side effect of an analytics request. Always restate exactly what will be deleted (website, filters, date range, and how many records if known) and get explicit user confirmation first. Never run a DELETE without a date range or other narrowing filter unless the user has explicitly confirmed a full-history wipe.
-- **Treat a request to "clean up", "fix", or "remove" data as deletion, not querying** — confirm intent before translating it into a DELETE call.
-- **Visitor profiles and payments are PII.** Profiles can contain email, name, geolocation, full page history, and revenue. Only retrieve an individual visitor profile when the user explicitly asks about a specific person/visitor, and confirm they are authorized to view it. Present the minimum detail needed to answer — do not dump full identity, contact, and activity timelines unless asked.
+- **Treat a request to "clean up", "fix", or "remove" data as deletion, not querying**: confirm intent before translating it into a DELETE call.
+- **Visitor profiles and payments are PII.** Profiles can contain email, name, geolocation, full page history, and revenue. Only retrieve an individual visitor profile when the user explicitly asks about a specific person/visitor, and confirm they are authorized to view it. Present the minimum detail needed to answer; do not dump full identity, contact, and activity timelines unless asked.
 - **Minimize personal data on writes.** When recording payments/goals, send only the fields required for the task. Do not add `email`, `name`, or `customerId` unless the user explicitly provides them and they are needed for attribution.
 - **Never expose API keys** in output, logs, or client-side code.
 - **Issue status is not deletion.** `PATCH /issues/:id` is reversible and safe. But `resolved` asserts the bug is fixed and `suspended` asserts it never mattered. Ask which the user means rather than choosing.
@@ -40,7 +40,7 @@ Rate limit: 600 requests per minute per token. Every response carries `RateLimit
 
 `GET /openapi.json` is public and needs no token, so automation platforms can import the spec.
 
-Workspace API tokens use the `flow_ws_` prefix. Use these for API, MCP, OpenClaw, and multi-website access. Website API keys use the `flow_` prefix and are scoped to a single website, mainly for server-side custom goal and payment ingestion. Treat both like passwords — never expose them in client-side code.
+Workspace API tokens use the `flow_ws_` prefix. Use these for API, MCP, OpenClaw, and multi-website access. Website API keys use the `flow_` prefix and are scoped to a single website, mainly for server-side custom goal and payment ingestion. Treat both like passwords and never expose them in client-side code.
 
 ## Core Workflow
 
@@ -60,7 +60,7 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
   "https://analytics.flowsery.com/analytics/api/v1/metadata?websiteId=WEBSITE_ID"
 ```
 
-Returns `{ "status": "success", "data": [{ "domain", "timezone", "name", "logo", "kpiColorScheme", "kpi", "currency" }] }`. Use the `timezone` and `currency` values for subsequent queries.
+Returns `{ "status": "success", "data": [{ "domain", "timezone", "logo", "kpiColorScheme", "kpi", "currency" }] }`. Use the `timezone` and `currency` values for subsequent queries.
 
 ### 3. Get site overview (aggregated metrics)
 
@@ -69,20 +69,20 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
   "https://analytics.flowsery.com/analytics/api/v1/overview?websiteId=WEBSITE_ID&startAt=2026-01-01&endAt=2026-01-31&timezone=America/New_York"
 ```
 
-Returns a single row: `visitors`, `sessions`, `bounce_rate`, `avg_session_duration`, `revenue`, `revenue_per_visitor`, `conversion_rate` (a percentage).
+Returns a single row: `visitors`, `sessions`, `bounceRate` (percent), `avgSessionDuration` and `avgEngagedTime` (seconds), `revenue`, `renewalRevenue`, `refundedRevenue`, `revenuePerVisitor`, `conversionRate` (percent), `kpiValue`, `kpiPerVisitor`, `kpiConversionRate` and `currency`.
 
-Without `startAt`/`endAt` the window is the last 30 days ending now, not all time; say which window you used. Use `fields` to select specific metrics: `?fields=visitors,revenue`. Every `filter_*` param narrows the whole row, so `filter_country` plus `filter_device` answers "mobile visitors from Germany" in one call. Prefer `/timeseries` for a trend and a breakdown endpoint for a split by page, source or geography.
+Without `startAt`/`endAt` the window is the last 30 days ending now, not all time; say which window you used. There is no field selector; every call returns the whole row. Every `filter_*` param narrows the whole row, so `filter_country` plus `filter_device` answers "mobile visitors from Germany" in one call. Prefer `/timeseries` for a trend and a breakdown endpoint for a split by page, source or geography.
 
 ### 4. Get time series data
 
 ```bash
 curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
-  "https://analytics.flowsery.com/analytics/api/v1/timeseries?websiteId=WEBSITE_ID&interval=day&fields=visitors,sessions,revenue&startAt=2026-03-01&endAt=2026-03-31"
+  "https://analytics.flowsery.com/analytics/api/v1/timeseries?websiteId=WEBSITE_ID&interval=day&startAt=2026-03-01&endAt=2026-03-31"
 ```
 
 The same metrics as `/overview`, bucketed by `interval` (`hour`, `day`, `week`, `month`; default `day`) with totals across the whole window. Dates default to the last 30 days. Match the interval to the range: hourly buckets across a year return thousands of points.
 
-Response includes `data` (one point per bucket with `timestamp`, `name`, the requested fields and `revenueBreakdown` of new, renewal and refund), `totals` (`visitors`, `sessions`, `revenue`, `revenueBreakdown`), and `pagination`.
+Response includes `interval`, `timezone`, `currency`, `data` (one point per bucket with `timestamp`, `name`, `visitors`, `sessions`, `revenue`, `newRevenue`, `renewalRevenue`, `refundedRevenue`, `conversionRate` and `kpiValue`), `totals` (`visitors`, `sessions`, `revenue`), and `pagination`.
 
 ### 5. Check real-time visitors
 
@@ -91,7 +91,7 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
   "https://analytics.flowsery.com/analytics/api/v1/realtime?websiteId=WEBSITE_ID"
 ```
 
-Returns `{ "data": [{ "visitors": 42 }] }` — active visitors in the last 5 minutes. A point-in-time number: no date, filter or pagination params, and no history. Use `/timeseries?interval=hour` for the recent trend. Poll at most once every 5 seconds.
+Returns `{ "data": [{ "visitors": 42 }] }`: active visitors in the last 5 minutes. A point-in-time number: no date, filter or pagination params, and no history. Use `/timeseries?interval=hour` for the recent trend. Poll at most once every 5 seconds.
 
 ### 6. Get breakdown reports
 
@@ -110,7 +110,7 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
 curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
   "https://analytics.flowsery.com/analytics/api/v1/countries?websiteId=WEBSITE_ID&startAt=2026-03-01&endAt=2026-03-31"
 
-# Devices (desktop/mobile/tablet)
+# Devices (Desktop/Mobile/Tablet)
 curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
   "https://analytics.flowsery.com/analytics/api/v1/devices?websiteId=WEBSITE_ID&startAt=2026-03-01&endAt=2026-03-31"
 
@@ -123,21 +123,21 @@ Available breakdown endpoints: `pages`, `referrers`, `countries`, `regions`, `ci
 
 Choosing between them:
 
-- `referrers` lists individual referring domains; `channels` groups the same traffic into GA4-aligned channels (Direct, Organic Search, Paid Social, and so on), so start with `channels` for the mix and drill into `referrers` for the domains.
+- `referrers` lists individual referrers, under a source name such as `Google` for recognized sites and the domain otherwise; `channels` groups the same traffic into GA4-aligned channels (Direct, Organic Search, Paid Social, and so on), so start with `channels` for the mix and drill into `referrers` for the sites behind it.
 - `campaigns` lists `utm_campaign` values only, so untagged traffic is absent; use `breakdown?dimension=utm_source` (or `utm_medium`, `utm_term`, `utm_content`, `all_params`) for the other tracking parameters.
 - `countries`, `regions` and `cities` are the same report at three granularities; add `filter_country` to `regions` or `cities` to drill into one country. Cities have a long tail, so filter first or raise `limit`.
-- `browsers` and `operating-systems` return names only; `breakdown?dimension=browser_version` or `os_version` adds versions. `devices` is the desktop/mobile/tablet split (three rows).
+- `browsers` and `operating-systems` return names only; `breakdown?dimension=browser_version` or `os_version` adds versions. `devices` is the `Desktop`/`Mobile`/`Tablet` split (three rows).
 - `hostnames` matters only for sites tracking several domains or subdomains.
 - `goals` lists every configured goal (including the auto-created `payment` and `free_trial` goals) with completions in the window. `filter_*` narrows the visitors counted; `limit` and `offset` page the goal list. `breakdown?dimension=goal` returns the same rows with revenue and percentage.
 
-For any dimension, including the ones without a shortcut (`entry_page`, `exit_link`, `browser_version`, `os_version`, the UTM parameters, `ref`, `source`, `all_params`), use the generic breakdown:
+For any dimension, including the ones without a shortcut (`entry_page`, `exit_link`, `browser_version`, `os_version`, the UTM parameters, `ref`, `source`, `via`, `all_params`), use the generic breakdown:
 
 ```bash
 curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
   "https://analytics.flowsery.com/analytics/api/v1/breakdown?websiteId=WEBSITE_ID&dimension=utm_source&startAt=2026-03-01&endAt=2026-03-31"
 ```
 
-See [references/breakdown-dimensions.md](references/breakdown-dimensions.md) for all 24 dimensions.
+See [references/breakdown-dimensions.md](references/breakdown-dimensions.md) for all 25 dimensions.
 
 ### 7. Read AI-detected issues
 
@@ -150,7 +150,7 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
 
 Each issue carries a title, severity (`low`, `medium`, `high`, `critical`), status, how many sessions hit it, and when it was first and last seen. The response also returns open, in-progress and resolved counts for the whole site, so "how are we doing" needs one call rather than three.
 
-Filter with `status`, `severity`, `search`, and sort by `severity` (default) or `recency`. `limit` defaults to 100 (max 1000). Suspended issues are hidden unless `status=suspended`, so an issue that appears to have vanished was probably suspended rather than deleted.
+Filter with `status`, `severity`, `search`, and sort by `severity` (default) or `recency`. `limit` defaults to 100 (max 1000). Suspended issues are hidden unless `status=suspended`, so an issue that appears to have vanished was probably suspended rather than deleted. On a free trial the list holds only the first 10 issues.
 
 For one issue in full, including the sessions behind it and steps to replicate:
 
@@ -161,7 +161,7 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
 
 > Session detail names pages, referrers and geography. Treat it with the same care as a visitor profile and surface only what answers the question.
 
-An unknown id, or an issue from another website, returns `404 Issue not found`. On a free trial only the first 10 issues are unlocked; the rest return `403 Upgrade to view this issue`.
+An unknown id, or an issue from another website, returns `404 Issue not found`. On a free trial only the first 10 issues are unlocked; the rest return `403 Upgrade to view this issue`, on `PATCH` as well.
 
 Move an issue through its workflow:
 
@@ -176,7 +176,7 @@ Only the status changes; title, severity, occurrences and comments stay, and the
 
 ### 8. Get a visitor profile
 
-> ⚠️ **PII.** This endpoint returns personal data about an individual (email, name, city/region, full page history, revenue). Only call it when the user explicitly asks about a specific visitor, confirm they are authorized to view that person's data, and present the minimum detail that answers the question — don't dump the full identity and activity timeline unless asked.
+> ⚠️ **PII.** This endpoint returns personal data about an individual (email, name, city/region, full page history, revenue). Only call it when the user explicitly asks about a specific visitor, confirm they are authorized to view that person's data, and present the minimum detail that answers the question; don't dump the full identity and activity timeline unless asked.
 
 ```bash
 curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
@@ -192,7 +192,7 @@ Returns comprehensive visitor data:
 - **profile**: identified user data (userId, name, email) or null for anonymous visitors
 - **activityTimeline**: merged chronological list of all pageviews, goals, and payments
 
-The visitor ID comes from the `_fs_vid` browser cookie set by the Flowsery tracking script (also shown in the dashboard visitor view). An unknown id, or a visitor belonging to another website, returns `404 Visitor not found`. `profile` is null for anonymous visitors, and each list holds the 100 most recent items. For questions about many visitors use the aggregate endpoints instead.
+The visitor ID is the visitor record id from `/realtime/map` or the dashboard visitor view, not the `_fs_vid` cookie value. An unknown id, or a visitor belonging to another website, returns `404 Visitor not found`. `profile` is null for anonymous visitors, and each list holds the 100 most recent items. For questions about many visitors use the aggregate endpoints instead.
 
 ### 9. Track a custom goal
 
@@ -210,7 +210,7 @@ curl -X POST https://analytics.flowsery.com/analytics/api/v1/goals \
 
 - `name` (required): lowercase letters, numbers, underscores, hyphens; max 64 chars. The goal is created on first use, so there is no setup call.
 - `visitorUid` (recommended): the `_fs_vid` cookie value of a visitor the tracking script has already seen, so the completion attaches to that visitor's sessions and source. Omit it to record an anonymous completion.
-- `metadata` (optional): up to 10 key-value pairs (keys: lowercase, max 64 chars; values: max 255 chars); more than 10 returns `400`
+- `metadata` (optional): up to 10 string key-value pairs; more than 10 returns `400`
 
 Each call appends one completion, so repeating it counts the goal twice. Use `POST /payments` for revenue, which records a `payment` goal on its own. Undo with `DELETE /goals`.
 
@@ -218,7 +218,7 @@ Each call appends one completion, so repeating it counts the goal twice. Use `PO
 
 > If you use Stripe, LemonSqueezy, or Polar, payments are tracked automatically when connected. Use this endpoint only for other providers.
 
-> ⚠️ **PII / data minimization.** `email`, `name`, and `customerId` are personal data and are all optional. Send them only when the user explicitly provides them and they are needed for revenue attribution. Omit them otherwise — `amount`, `currency`, and `transactionId` are enough to record a payment.
+> ⚠️ **PII / data minimization.** `email`, `name`, and `customerId` are personal data and are all optional. Send them only when the user explicitly provides them and they are needed for revenue attribution. Omit them otherwise: `amount`, `currency`, and `transactionId` are enough to record a payment.
 
 ```bash
 curl -X POST https://analytics.flowsery.com/analytics/api/v1/payments \
@@ -234,7 +234,7 @@ curl -X POST https://analytics.flowsery.com/analytics/api/v1/payments \
   }'
 ```
 
-Required: `amount`, `currency`, `transactionId`. Optional: `visitorUid`, `sessionUid`, `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean).
+Required: `amount`, `currency`, `transactionId`. Optional: `visitorUid`, `sessionUid`, `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean), `timestamp` (ISO 8601, defaults to now). An omitted `currency` is stored as `USD`, not the website currency, so always send it.
 
 Behavior to know before calling:
 
@@ -289,13 +289,13 @@ All filters use the `filter_` prefix and combine with AND. Values are the ones t
 
 | Filter                | Description                                    |
 | --------------------- | ---------------------------------------------- |
-| `filter_country`      | Country name or code                           |
-| `filter_region`       | Region or state                                |
+| `filter_country`      | Country name, e.g. `United States`             |
+| `filter_region`       | Region or state name, e.g. `California`        |
 | `filter_city`         | City name                                      |
-| `filter_device`       | Device type: `desktop`, `mobile`, `tablet`     |
+| `filter_device`       | `Desktop`, `Mobile` or `Tablet` (case-sensitive) |
 | `filter_browser`      | Browser: `Chrome`, `Safari`, `Firefox`, `Edge` |
 | `filter_os`           | OS: `Mac OS`, `Windows`, `iOS`, `Android`      |
-| `filter_referrer`     | Referrer domain                                |
+| `filter_referrer`     | Referrer, as `/referrers` returns it           |
 | `filter_ref`          | `ref` URL parameter value                      |
 | `filter_source`       | `source` URL parameter value                   |
 | `filter_via`          | `via` URL parameter value                      |
@@ -314,7 +314,7 @@ Combine multiple filters to drill down:
 
 ```bash
 curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
-  "https://analytics.flowsery.com/analytics/api/v1/pages?websiteId=WEBSITE_ID&filter_country=United%20States&filter_device=mobile&startAt=2026-03-01&endAt=2026-03-31"
+  "https://analytics.flowsery.com/analytics/api/v1/pages?websiteId=WEBSITE_ID&filter_country=United%20States&filter_device=Mobile&startAt=2026-03-01&endAt=2026-03-31"
 ```
 
 ## Response Format
@@ -332,12 +332,29 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
 
 ```json
 {
-  "status": "error",
-  "error": { "code": 401, "message": "A descriptive error message" }
+  "statusCode": 403,
+  "error": "Forbidden",
+  "code": "subscription_required",
+  "message": "A descriptive error message"
 }
 ```
 
-Error codes: `400` (invalid input), `401` (bad API key), `404` (not found), `500` (server error).
+`code` is present only on the errors below; read `message` for the rest.
+
+| Status | `code`                     | Meaning                                                                                              |
+| ------ | -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 400    |                            | Invalid input, no website selected with a workspace token, or a delete with no filter                |
+| 401    |                            | Missing, invalid or revoked API key                                                                  |
+| 401    | `token_issuer_lost_access` | The member who created the token left the workspace or was deactivated. The token is dead            |
+| 403    | `subscription_required`    | The workspace plan no longer includes API access. A new token will not help until the plan is renewed |
+| 403    | `workspace_access_denied`  | `X-Workspace-Id` named a workspace other than the token's own. Leave the header out                  |
+| 403    |                            | `Upgrade to view this issue`: a free-trial issue beyond the first 10                                 |
+| 404    |                            | Website, visitor or issue not found in this workspace                                                |
+| 429    |                            | Rate limited. Wait `Retry-After` seconds                                                             |
+
+## Workspaces
+
+`GET /workspaces` returns `{ "status": "success", "data": [...] }` with one entry per workspace the caller can act in: `id`, `name`, `organization` (`id`, `name`), `role` (`key`, `name`), `permissions`, `isDefault` and `current`. A workspace token belongs to one workspace, so it lists only that one. A website key (`flow_`) belongs to one website and answers `400` here. Every endpoint accepts an optional `X-Workspace-Id` header; with a token it must be the token's own workspace or be left out.
 
 ## Marketing Channels
 
@@ -364,16 +381,17 @@ Flowsery auto-classifies traffic into GA4-aligned channels:
 
 Most commands are safe GET queries. The only write operations are:
 
-- `POST /goals` — track a goal event
-- `POST /payments` — record a payment
-- `DELETE /goals` — delete goal events (irreversible)
-- `DELETE /payments` — delete payment records (irreversible)
+- `POST /goals`: track a goal event
+- `POST /payments`: record a payment
+- `PATCH /issues/{id}`: change an issue's status (reversible)
+- `DELETE /goals`: delete goal events (irreversible)
+- `DELETE /payments`: delete payment records (irreversible)
 
 **Always confirm with the user before running DELETE operations.**
 
 ### Date handling
 
-- When the user says "this month", "last week", "yesterday" — calculate the actual ISO dates
+- When the user says "this month", "last week" or "yesterday", calculate the actual ISO dates
 - The API itself defaults to the last 30 days ending now when no date range is given; say which window the numbers cover
 - With a workspace token, call `/websites` first and choose a `websiteId` or `domain`
 - Always use UTC or the site's timezone (from the metadata endpoint)
@@ -397,7 +415,7 @@ Do not poll the `realtime` endpoint more than once per 5 seconds.
 | "Show me traffic trends"           | Call `timeseries` with `interval=day`                                                       |
 | "Who is this visitor?"             | Call `visitors/{id}`                                                                        |
 | "Track a signup"                   | Call `POST /goals` with name and visitor UID                                                |
-| "How's my revenue?"                | Call `overview` with `fields=revenue,conversion_rate` or `timeseries` with `fields=revenue` |
+| "How's my revenue?"                | Call `overview` for `revenue` and `conversionRate`, or `timeseries` for revenue per bucket  |
 | "Break down traffic by country"    | Call `countries`                                                                            |
 | "Show me mobile vs desktop"        | Call `devices`                                                                              |
 | "What campaigns are working?"      | Call `campaigns` or `breakdown?dimension=utm_source`                                        |

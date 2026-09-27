@@ -53,11 +53,12 @@ const BreakdownDimension = Type.Union(
     "device", "page", "entry_page", "exit_link", "hostname", "referrer",
     "channel", "campaign", "goal", "country", "region", "city", "browser",
     "browser_version", "os", "os_version", "utm_source", "utm_medium",
-    "utm_campaign", "utm_term", "utm_content", "ref", "source", "all_params",
+    "utm_campaign", "utm_term", "utm_content", "ref", "source", "via",
+    "all_params",
   ].map((value) => Type.Literal(value)),
   {
     description:
-      "The dimension to group visitors by. entry_page is the landing page, exit_link the outbound click, campaign the same as utm_campaign, and all_params every tracking parameter at once.",
+      "The dimension to group visitors by. entry_page is the landing page, exit_link the outbound click, campaign the same as utm_campaign, ref, source and via the matching ?ref=, ?source= and ?via= URL parameters, and all_params every tracking parameter at once.",
   },
 );
 
@@ -68,7 +69,7 @@ export default definePluginEntry({
   id: "flowsery",
   name: "Flowsery",
   description:
-    "Query privacy-first web analytics: visitors, trends, 24 breakdown dimensions, live visitors, and the issues AI found in session recordings.",
+    "Query privacy-first web analytics: visitors, trends, 25 breakdown dimensions, live visitors, and the issues AI found in session recordings.",
   register(api) {
     const cfg = (): PluginConfig => readConfig(api as { config?: unknown });
 
@@ -91,14 +92,7 @@ export default definePluginEntry({
       label: "Flowsery: site totals",
       description:
         "Get headline totals for one site over a date range as a single row: visitors, sessions, bounce rate, average session duration, revenue, revenue per visitor and conversion rate. Dates default to the last 30 days ending now; timezone defaults to the site setting. Every filter_* argument narrows the whole result, so filter_country plus filter_device answers 'mobile visitors from Germany' in one call. Use flowsery_timeseries for the trend over time and flowsery_breakdown for the split by page, source or geography.",
-      parameters: query({
-        fields: Type.Optional(
-          Type.String({
-            description:
-              "Comma-separated subset of visitors, sessions, bounce_rate, avg_session_duration, currency, revenue, revenue_per_visitor, conversion_rate. Omit for all.",
-          }),
-        ),
-      }),
+      parameters: query(),
       async execute(_toolCallId, params, signal) {
         return jsonResult(await get("/overview", params, signal));
       },
@@ -108,16 +102,13 @@ export default definePluginEntry({
       name: "flowsery_timeseries",
       label: "Flowsery: trend over time",
       description:
-        "Get the same metrics as flowsery_overview bucketed by hour, day, week or month, plus totals across the whole window. Returns one point per bucket with a timestamp, the requested fields, and revenue split into new, renewal and refund. Use this for anything shaped like a trend or a chart; use flowsery_overview for one total and flowsery_breakdown for a split by dimension rather than time. Dates default to the last 30 days and interval to day. Asking for hourly buckets across a year returns thousands of points, so match the interval to the range.",
+        "Get the same metrics as flowsery_overview bucketed by hour, day, week or month, plus totals across the whole window. Returns one point per bucket with a timestamp, visitors, sessions, conversion rate, and revenue split into new, renewal and refund. Use this for anything shaped like a trend or a chart; use flowsery_overview for one total and flowsery_breakdown for a split by dimension rather than time. Dates default to the last 30 days and interval to day. Asking for hourly buckets across a year returns thousands of points, so match the interval to the range.",
       parameters: query({
         interval: Type.Optional(
           Type.Union(
             [Type.Literal("hour"), Type.Literal("day"), Type.Literal("week"), Type.Literal("month")],
             { description: "Bucket size. Defaults to day; pick hour only for ranges of a few days." },
           ),
-        ),
-        fields: Type.Optional(
-          Type.String({ description: "Comma-separated: visitors, sessions, revenue, conversion_rate, name." }),
         ),
       }),
       async execute(_toolCallId, params, signal) {
@@ -129,7 +120,7 @@ export default definePluginEntry({
       name: "flowsery_breakdown",
       label: "Flowsery: break down by dimension",
       description:
-        "Group visitors by any one of 24 dimensions, ranked by visitors descending, for a date range: top pages, referrers, countries, devices, browsers, campaigns, UTM parameters, exit links and more. This one tool replaces the API's per-dimension endpoints. Combine a dimension with filter_* arguments to drill in, for example dimension=page with filter_utm_campaign to see where one campaign's traffic landed. Rows carry value, visitors, revenue and percentage with pagination.total; limit defaults to 100 (max 1000). Dates default to the last 30 days. Use flowsery_overview when you need totals rather than a split.",
+        "Group visitors by any one of 25 dimensions, ranked by visitors descending, for a date range: top pages, referrers, countries, devices, browsers, campaigns, UTM parameters, exit links and more. This one tool replaces the API's per-dimension endpoints. Combine a dimension with filter_* arguments to drill in, for example dimension=page with filter_utm_campaign to see where one campaign's traffic landed. Rows carry value, visitors, revenue and percentage with pagination.total; limit defaults to 100 (max 1000). Dates default to the last 30 days. Use flowsery_overview when you need totals rather than a split.",
       parameters: query({ dimension: BreakdownDimension }),
       async execute(_toolCallId, params, signal) {
         return jsonResult(await get("/breakdown", params, signal));

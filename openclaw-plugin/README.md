@@ -1,6 +1,6 @@
 # Flowsery plugin for OpenClaw
 
-Privacy-first web analytics inside OpenClaw. Visitors, trends, 24 breakdown
+Privacy-first web analytics inside OpenClaw. Visitors, trends, 25 breakdown
 dimensions, live visitor count, and the issues AI found in session recordings.
 
 ## Install
@@ -37,15 +37,15 @@ A workspace token spans every site in the workspace, so each query needs a
 | `flowsery_websites` | List the sites this token can read. Call this first. |
 | `flowsery_overview` | Totals: visitors, sessions, bounce rate, duration, revenue, conversion rate. |
 | `flowsery_timeseries` | The same metrics bucketed by hour, day, week or month. |
-| `flowsery_breakdown` | Group visitors by any of 24 dimensions. |
+| `flowsery_breakdown` | Group visitors by any of 25 dimensions. |
 | `flowsery_realtime` | Visitors active in the last five minutes. |
 | `flowsery_issues` | Bugs and broken flows the AI found in session recordings. |
 
-Six tools against an API of twenty-seven, and most of the shrinkage is one
+Six tools against an API of twenty-eight, and most of the shrinkage is one
 decision: `flowsery_breakdown` takes a `dimension` argument and replaces the
-fifteen per-dimension endpoints. `get_countries`, `get_browsers`,
+eleven per-dimension endpoints. `get_countries`, `get_browsers`,
 `get_campaigns` and the rest are the same query with a different word in it.
-Fifteen near-identical tools is fifteen chances to pick the wrong one.
+Eleven near-identical tools is eleven chances to pick the wrong one.
 
 Every tool takes the same `filter_*` arguments, so the interesting questions
 are one call. `dimension=page` with `filter_utm_campaign=spring` shows where
@@ -73,8 +73,8 @@ carries a session count and replication steps.
 
 Suspended issues are hidden unless `status` asks for them.
 
-Omitting `startAt` and `endAt` means all time, which on a busy site is a lot of
-rows. Pair a wide range with a coarse `interval`.
+Omitting `startAt` and `endAt` means the last 30 days ending now, not all time.
+Pair a wide range with a coarse `interval`.
 
 The API allows 600 requests per minute per token. A 429 comes back with
 `Retry-After` and the plugin surfaces it rather than hammering.
