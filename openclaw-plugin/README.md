@@ -33,7 +33,7 @@ A workspace token spans every site in the workspace, so each query needs a
 ## Tools
 
 | tool | what it does |
-|---|---|
+| --- | --- |
 | `flowsery_websites` | List the sites this token can read. Call this first. |
 | `flowsery_overview` | Totals: visitors, sessions, bounce rate, duration, revenue, conversion rate. |
 | `flowsery_timeseries` | The same metrics bucketed by hour, day, week or month. |

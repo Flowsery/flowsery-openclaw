@@ -1,8 +1,8 @@
 ---
 name: flowsery
-description: Query web analytics data from Flowsery Analytics, a privacy-first web analytics platform. Retrieve real-time visitors, time series, breakdowns (device, page, country, referrer, campaign, channel, exit link, and 25 dimensions total), visitor profiles with activity timelines, and the bugs, broken flows and UX problems the AI found in session recordings. Also supports a small set of write operations that require explicit user confirmation: creating custom goal/payment records, and permanently (irreversibly) deleting goal events and payment records. Visitor profiles and payments include personal data (email, name, location, revenue), so handle them as PII. Use when the user wants to check their website traffic, analyze visitor behavior, view revenue data, track conversions, or manage goal/payment records on their Flowsery-tracked sites.
+description: Query web analytics data from Flowsery Analytics, a privacy-first web analytics platform. Retrieve real-time visitors, time series, breakdowns (device, page, country, referrer, campaign, channel, exit link, and 25 dimensions total), visitor profiles with activity timelines, and the bugs, broken flows and UX problems the AI found in session recordings. Only after explicit user confirmation, it can also create goal and payment records and permanently delete goal events and payment records. Visitor profiles and payments include personal data (email, name, location, revenue), so handle them as PII. Use when the user wants to check their website traffic, analyze visitor behavior, view revenue data, track conversions, or manage goal/payment records on their Flowsery-tracked sites.
 homepage: https://flowsery.com
-version: 1.1.0
+version: 1.2.0
 metadata: { 'openclaw': { 'emoji': '📊', 'primaryEnv': 'FLOWSERY_API_KEY', 'requires': { 'env': ['FLOWSERY_API_KEY'] } } }
 ---
 
@@ -14,7 +14,7 @@ Privacy-first web analytics. Query real-time visitors, breakdowns, time series, 
 
 This skill is read-only by default, but the API also exposes **write** and **irreversible delete** operations and returns **personal data**. Before acting, observe these rules:
 
-- **Destructive operations require confirmation.** `DELETE /goals` and `DELETE /payments` permanently erase historical business data and cannot be undone. Never run them as a side effect of an analytics request. Always restate exactly what will be deleted (website, filters, date range, and how many records if known) and get explicit user confirmation first. Never run a DELETE without a date range or other narrowing filter unless the user has explicitly confirmed a full-history wipe.
+- **Destructive operations require confirmation.** `DELETE /goals` and `DELETE /payments` permanently erase historical business data and cannot be undone. Never run them as a side effect of an analytics request. First read how many records match (sections 11 and 12), then restate the website, filters, date range and that count, and get an explicit yes for that exact deletion. Always send both `startAt` and `endAt`, or a single `transactionId` for one payment; a full-history wipe needs the user to ask for one in those words. Never run a DELETE from an unattended run.
 - **Treat a request to "clean up", "fix", or "remove" data as deletion, not querying**: confirm intent before translating it into a DELETE call.
 - **Visitor profiles and payments are PII.** Profiles can contain email, name, geolocation, full page history, and revenue. Only retrieve an individual visitor profile when the user explicitly asks about a specific person/visitor, and confirm they are authorized to view it. Present the minimum detail needed to answer; do not dump full identity, contact, and activity timelines unless asked.
 - **Minimize personal data on writes.** When recording payments/goals, send only the fields required for the task. Do not add `email`, `name`, or `customerId` unless the user explicitly provides them and they are needed for attribution.
@@ -212,7 +212,7 @@ curl -X POST https://analytics.flowsery.com/analytics/api/v1/goals \
 - `visitorUid` (recommended): the `_fs_vid` cookie value of a visitor the tracking script has already seen, so the completion attaches to that visitor's sessions and source. Omit it to record an anonymous completion.
 - `metadata` (optional): up to 10 string key-value pairs; more than 10 returns `400`
 
-Each call appends one completion, so repeating it counts the goal twice. Use `POST /payments` for revenue, which records a `payment` goal on its own. Undo with `DELETE /goals`.
+Each call appends one completion, so repeating it counts the goal twice and there is no undo for a single completion. Send it once, and do not retry a call that may have gone through. Use `POST /payments` for revenue, which records a `payment` goal on its own.
 
 ### 10. Record a payment
 
@@ -245,7 +245,9 @@ Behavior to know before calling:
 
 ### 11. Delete goal events (irreversible, confirm first)
 
-> 🛑 **Destructive.** This permanently erases historical goal data and cannot be undone. Before running it, restate the website, filters, and date range to the user and get explicit confirmation. Do not infer a DELETE from a vague "clean up"/"fix" request.
+> 🛑 **Destructive.** This permanently erases historical goal data and cannot be undone. Only run it when the user asked to delete goal data, never from a vague "clean up"/"fix" request.
+
+Before deleting, call `GET /goals` with the same `websiteId`, `startAt` and `endAt` and read the completions of that goal name, so the user sees how many will go. Restate the website, goal name, visitor if any, date range and that count, and wait for a yes to that exact deletion.
 
 ```bash
 curl -X DELETE "https://analytics.flowsery.com/analytics/api/v1/goals?websiteId=WEBSITE_ID&name=signup&startAt=2026-01-01T00:00:00Z&endAt=2026-01-31T23:59:59Z" \
@@ -254,11 +256,13 @@ curl -X DELETE "https://analytics.flowsery.com/analytics/api/v1/goals?websiteId=
 
 At least one filter required: `visitorId`, `name`, `startAt`, `endAt`. Filters combine with AND; `startAt` and `endAt` are independent, so one bound alone is allowed. The response returns the number of completions deleted. Only completions are removed: the goal definition stays and `/goals` still lists it.
 
-**WARNING**: Without a date range, matching records are deleted across the entire history. Never omit the date range unless the user has explicitly confirmed a full-history wipe.
+**WARNING**: Without a date range, matching records are deleted across the entire history. Send both `startAt` and `endAt` unless the user asked, in those words, to wipe the full history.
 
 ### 12. Delete payment records (irreversible, confirm first)
 
-> 🛑 **Destructive.** This permanently erases historical payment/revenue data and cannot be undone. Before running it, restate the website, filters, and date range to the user and get explicit confirmation. Do not infer a DELETE from a vague "clean up"/"fix" request.
+> 🛑 **Destructive.** This permanently erases historical payment/revenue data and cannot be undone. Only run it when the user asked to delete payment records, never from a vague "clean up"/"fix" request. To reverse a charge, record a refund instead (section 10).
+
+Prefer one `transactionId`, which deletes one payment. For a date range, read `revenue` from `overview` with the same `websiteId`, `startAt` and `endAt` first, so the user sees what disappears from the reports. Restate the website, filters, date range and that amount, and wait for a yes to that exact deletion.
 
 ```bash
 curl -X DELETE "https://analytics.flowsery.com/analytics/api/v1/payments?websiteId=WEBSITE_ID&transactionId=payment_456" \
@@ -267,48 +271,48 @@ curl -X DELETE "https://analytics.flowsery.com/analytics/api/v1/payments?website
 
 At least one filter required: `transactionId`, `visitorId`, `startAt`, `endAt`. Filters combine with AND; `startAt` and `endAt` are independent, so one bound alone is allowed. The response returns the number of records deleted, and the revenue disappears from every report and visitor profile. To reverse a charge while keeping history, use `POST /payments` with `isRefund: true` instead.
 
-**WARNING**: Without a date range, matching records are deleted across the entire history. Never omit the date range unless the user has explicitly confirmed a full-history wipe.
+**WARNING**: Without a date range, matching records are deleted across the entire history. Send both `startAt` and `endAt` unless the user asked, in those words, to wipe the full history.
 
 ## Query Parameters
 
 ### Date range & pagination (all GET endpoints)
 
-| Param       | Type    | Description                                                          |
-| ----------- | ------- | -------------------------------------------------------------------- |
-| `startAt`   | string  | ISO 8601 start date or datetime (e.g. `2026-01-01`). Default: 30 days ago |
-| `endAt`     | string  | ISO 8601 end date (e.g. `2026-01-31`). Default: now                     |
-| `timezone`  | string  | IANA timezone (e.g. `America/New_York`). Falls back to site default.     |
-| `limit`     | integer | Max rows, 1-1000 (default: 100). Rows are ordered by visitors descending |
-| `offset`    | integer | Rows to skip (default: 0). Compare with `pagination.total`               |
-| `websiteId` | string  | Website to query when using a workspace token                        |
-| `domain`    | string  | Website domain to query when using a workspace token                 |
+| Param | Type | Description |
+| --- | --- | --- |
+| `startAt` | string | ISO 8601 start date or datetime (e.g. `2026-01-01`). Default: 30 days ago |
+| `endAt` | string | ISO 8601 end date (e.g. `2026-01-31`). Default: now |
+| `timezone` | string | IANA timezone (e.g. `America/New_York`). Falls back to site default. |
+| `limit` | integer | Max rows, 1-1000 (default: 100). Rows are ordered by visitors descending |
+| `offset` | integer | Rows to skip (default: 0). Compare with `pagination.total` |
+| `websiteId` | string | Website to query when using a workspace token |
+| `domain` | string | Website domain to query when using a workspace token |
 
 ### Filters (all GET endpoints)
 
 All filters use the `filter_` prefix and combine with AND. Values are the ones the matching breakdown returns, and every filter accepts the same operators: `v` is, `!v` is not, `~v` contains, `!~v` does not contain, `a|b` any of.
 
-| Filter                | Description                                    |
-| --------------------- | ---------------------------------------------- |
-| `filter_country`      | Country name, e.g. `United States`             |
-| `filter_region`       | Region or state name, e.g. `California`        |
-| `filter_city`         | City name                                      |
-| `filter_device`       | `Desktop`, `Mobile` or `Tablet` (case-sensitive) |
-| `filter_browser`      | Browser: `Chrome`, `Safari`, `Firefox`, `Edge` |
-| `filter_os`           | OS: `Mac OS`, `Windows`, `iOS`, `Android`      |
-| `filter_referrer`     | Referrer, as `/referrers` returns it           |
-| `filter_ref`          | `ref` URL parameter value                      |
-| `filter_source`       | `source` URL parameter value                   |
-| `filter_via`          | `via` URL parameter value                      |
-| `filter_utm_source`   | UTM source                                     |
-| `filter_utm_medium`   | UTM medium                                     |
-| `filter_utm_campaign` | UTM campaign                                   |
-| `filter_utm_term`     | UTM term                                       |
-| `filter_utm_content`  | UTM content                                    |
-| `filter_page`         | Page path                                      |
-| `filter_hostname`     | Hostname/domain                                |
-| `filter_entry_page`   | Landing page                                   |
-| `filter_channel`      | Marketing channel                              |
-| `filter_goal`         | Goal name                                      |
+| Filter | Description |
+| --- | --- |
+| `filter_country` | Country name, e.g. `United States` |
+| `filter_region` | Region or state name, e.g. `California` |
+| `filter_city` | City name |
+| `filter_device` | `Desktop`, `Mobile` or `Tablet` (case-sensitive) |
+| `filter_browser` | Browser: `Chrome`, `Safari`, `Firefox`, `Edge` |
+| `filter_os` | OS: `Mac OS`, `Windows`, `iOS`, `Android` |
+| `filter_referrer` | Referrer, as `/referrers` returns it |
+| `filter_ref` | `ref` URL parameter value |
+| `filter_source` | `source` URL parameter value |
+| `filter_via` | `via` URL parameter value |
+| `filter_utm_source` | UTM source |
+| `filter_utm_medium` | UTM medium |
+| `filter_utm_campaign` | UTM campaign |
+| `filter_utm_term` | UTM term |
+| `filter_utm_content` | UTM content |
+| `filter_page` | Page path |
+| `filter_hostname` | Hostname/domain |
+| `filter_entry_page` | Landing page |
+| `filter_channel` | Marketing channel |
+| `filter_goal` | Goal name |
 
 Combine multiple filters to drill down:
 
@@ -341,16 +345,16 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
 
 `code` is present only on the errors below; read `message` for the rest.
 
-| Status | `code`                     | Meaning                                                                                              |
-| ------ | -------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 400    |                            | Invalid input, no website selected with a workspace token, or a delete with no filter                |
-| 401    |                            | Missing, invalid or revoked API key                                                                  |
-| 401    | `token_issuer_lost_access` | The member who created the token left the workspace or was deactivated. The token is dead            |
-| 403    | `subscription_required`    | The workspace plan no longer includes API access. A new token will not help until the plan is renewed |
-| 403    | `workspace_access_denied`  | `X-Workspace-Id` named a workspace other than the token's own. Leave the header out                  |
-| 403    |                            | `Upgrade to view this issue`: a free-trial issue beyond the first 10                                 |
-| 404    |                            | Website, visitor or issue not found in this workspace                                                |
-| 429    |                            | Rate limited. Wait `Retry-After` seconds                                                             |
+| Status | `code` | Meaning |
+| --- | --- | --- |
+| 400 | | Invalid input, no website selected with a workspace token, or a delete with no filter |
+| 401 | | Missing, invalid or revoked API key |
+| 401 | `token_issuer_lost_access` | The member who created the token left the workspace or was deactivated. The token is dead |
+| 403 | `subscription_required` | The workspace plan no longer includes API access. A new token will not help until the plan is renewed |
+| 403 | `workspace_access_denied` | `X-Workspace-Id` named a workspace other than the token's own. Leave the header out |
+| 403 | | `Upgrade to view this issue`: a free-trial issue beyond the first 10 |
+| 404 | | Website, visitor or issue not found in this workspace |
+| 429 | | Rate limited. Wait `Retry-After` seconds |
 
 ## Workspaces
 
@@ -360,20 +364,20 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
 
 Flowsery auto-classifies traffic into GA4-aligned channels:
 
-| Channel        | How it's classified                                                 |
-| -------------- | ------------------------------------------------------------------- |
-| Organic Search | Google, Bing, DuckDuckGo, etc.                                      |
-| Paid Search    | utm_medium: cpc, ppc, paid_search                                   |
-| Organic Social | Facebook, Twitter, LinkedIn, Reddit, etc.                           |
-| Paid Social    | utm_medium: paid_social, social_cpc                                 |
-| Email          | utm_medium: email, newsletter; or source: mailchimp, sendgrid, etc. |
-| Display        | utm_medium: display, banner, cpm                                    |
-| Referral       | Other websites                                                      |
-| Direct         | No referrer                                                         |
-| Affiliate      | utm_medium: affiliate, partner                                      |
-| Video          | utm_medium: video, paid_video                                       |
-| SMS            | utm_medium: sms                                                     |
-| Audio          | utm_medium: audio, podcast                                          |
+| Channel | How it's classified |
+| --- | --- |
+| Organic Search | Google, Bing, DuckDuckGo, etc. |
+| Paid Search | utm_medium: cpc, ppc, paid_search |
+| Organic Social | Facebook, Twitter, LinkedIn, Reddit, etc. |
+| Paid Social | utm_medium: paid_social, social_cpc |
+| Email | utm_medium: email, newsletter; or source: mailchimp, sendgrid, etc. |
+| Display | utm_medium: display, banner, cpm |
+| Referral | Other websites |
+| Direct | No referrer |
+| Affiliate | utm_medium: affiliate, partner |
+| Video | utm_medium: video, paid_video |
+| SMS | utm_medium: sms |
+| Audio | utm_medium: audio, podcast |
 
 ## Tips for the Agent
 
@@ -387,7 +391,7 @@ Most commands are safe GET queries. The only write operations are:
 - `DELETE /goals`: delete goal events (irreversible)
 - `DELETE /payments`: delete payment records (irreversible)
 
-**Always confirm with the user before running DELETE operations.**
+**Never run a DELETE without first showing the user how many records match and getting a yes for that exact deletion.**
 
 ### Date handling
 
@@ -406,20 +410,20 @@ Do not poll the `realtime` endpoint more than once per 5 seconds.
 
 ### Common agent tasks
 
-| User says                          | What to do                                                                                  |
-| ---------------------------------- | ------------------------------------------------------------------------------------------- |
-| "How's my traffic?"                | Call `overview` with last 30 days                                                           |
-| "What are my top pages?"           | Call `pages` with date range; `breakdown?dimension=entry_page` for landing pages            |
-| "Where is my traffic coming from?" | Call `channels` for the mix, then `referrers` for the domains behind it                     |
-| "How many visitors right now?"     | Call `realtime`                                                                             |
-| "Show me traffic trends"           | Call `timeseries` with `interval=day`                                                       |
-| "Who is this visitor?"             | Call `visitors/{id}`                                                                        |
-| "Track a signup"                   | Call `POST /goals` with name and visitor UID                                                |
-| "How's my revenue?"                | Call `overview` for `revenue` and `conversionRate`, or `timeseries` for revenue per bucket  |
-| "Break down traffic by country"    | Call `countries`                                                                            |
-| "Show me mobile vs desktop"        | Call `devices`                                                                              |
-| "What campaigns are working?"      | Call `campaigns` or `breakdown?dimension=utm_source`                                        |
-| "What's broken on my site?"        | Call `issues` sorted by severity                                                            |
-| "Any new bugs this week?"          | Call `issues` with `sort=recency`                                                           |
-| "Mark that issue as fixed"         | Call `PATCH /issues/{id}`, but ask whether they mean `resolved` or `suspended`              |
-| "Refund that payment"              | Call `POST /payments` with `isRefund: true` and the original `transactionId`, not DELETE    |
+| User says | What to do |
+| --- | --- |
+| "How's my traffic?" | Call `overview` with last 30 days |
+| "What are my top pages?" | Call `pages` with date range; `breakdown?dimension=entry_page` for landing pages |
+| "Where is my traffic coming from?" | Call `channels` for the mix, then `referrers` for the domains behind it |
+| "How many visitors right now?" | Call `realtime` |
+| "Show me traffic trends" | Call `timeseries` with `interval=day` |
+| "Who is this visitor?" | Call `visitors/{id}` |
+| "Track a signup" | Call `POST /goals` with name and visitor UID |
+| "How's my revenue?" | Call `overview` for `revenue` and `conversionRate`, or `timeseries` for revenue per bucket |
+| "Break down traffic by country" | Call `countries` |
+| "Show me mobile vs desktop" | Call `devices` |
+| "What campaigns are working?" | Call `campaigns` or `breakdown?dimension=utm_source` |
+| "What's broken on my site?" | Call `issues` sorted by severity |
+| "Any new bugs this week?" | Call `issues` with `sort=recency` |
+| "Mark that issue as fixed" | Call `PATCH /issues/{id}`, but ask whether they mean `resolved` or `suspended` |
+| "Refund that payment" | Call `POST /payments` with `isRefund: true` and the original `transactionId`, not DELETE |

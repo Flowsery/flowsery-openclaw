@@ -69,7 +69,7 @@ export default definePluginEntry({
   id: "flowsery",
   name: "Flowsery",
   description:
-    "Query privacy-first web analytics: visitors, trends, 25 breakdown dimensions, live visitors, and the issues AI found in session recordings.",
+    "Read-only queries of Flowsery web analytics over the Flowsery API: visitors, trends, 25 breakdown dimensions, live visitors, and the issues AI found in session recordings. Results can include page URLs, locations and issue titles drawn from real visitor sessions, so share only what the user asked for.",
   register(api) {
     const cfg = (): PluginConfig => readConfig(api as { config?: unknown });
 

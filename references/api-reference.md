@@ -508,7 +508,7 @@ An omitted `currency` is stored as `USD`, not the website currency, so always se
 
 Delete custom goal events by filter.
 
-> 🛑 **Destructive & irreversible.** Permanently erases historical goal data. Agents must confirm the website, filters, and date range with the user before calling, and must not infer this from a vague "clean up" request.
+> 🛑 **Destructive & irreversible.** Permanently erases historical goal data. Agents read the matching count first, restate the website, filters, date range and count, get a yes for that exact deletion, and never infer one from a vague "clean up" request.
 
 **Query parameters (at least one required):**
 
@@ -534,7 +534,7 @@ Filters combine with AND. Only completions are removed: the goal definition stay
 
 Delete payment records by filter.
 
-> 🛑 **Destructive & irreversible.** Permanently erases historical payment/revenue data. Agents must confirm the website, filters, and date range with the user before calling, and must not infer this from a vague "clean up" request.
+> 🛑 **Destructive & irreversible.** Permanently erases historical payment/revenue data. Agents prefer one `transactionId`, read `revenue` from `/overview` over the same range before a range delete, restate the website, filters, date range and amount, get a yes for that exact deletion, and never infer one from a vague "clean up" request.
 
 **Query parameters (at least one required):**
 
