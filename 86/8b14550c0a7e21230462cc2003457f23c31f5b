@@ -1,0 +1,33 @@
+SKILL.md
+  s_a3cc5c62aed61d::t_7f15c231724cf4 3,5,17,215,248-250,259,263-265,274,280-288,294-315,348-357,367-380,394,413-429
+openclaw-plugin/README.md
+  s_a3cc5c62aed61d::t_0e2378fb9a14a7 36
+openclaw-plugin/openclaw.plugin.json
+  s_a3cc5c62aed61d::t_0abb3055c4d14b 4-5
+openclaw-plugin/package-lock.json
+  s_a3cc5c62aed61d::t_938e52fb57db3e 3,9,12,15,17
+openclaw-plugin/package.json
+  s_a3cc5c62aed61d::t_ef7d90a804dcfe 3,23,26,28
+openclaw-plugin/src/index.ts
+  s_a3cc5c62aed61d::t_03183c60cdc798 72
+references/api-reference.md
+  s_a3cc5c62aed61d::t_a63def6da9a5b0 511,537
+references/breakdown-dimensions.md
+  s_a3cc5c62aed61d::t_60bfcf4a17c30c 7-33,56-69,73-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "868b14550c0a7e21230462cc2003457f23c31f5b",
+  "prompts": {},
+  "sessions": {
+    "s_a3cc5c62aed61d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7ef6e32-f43e-434b-a03a-7feb62a6784c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Taras Shynkarenko <taras.shinkarenko@gmail.com>"
+    }
+  }
+}
