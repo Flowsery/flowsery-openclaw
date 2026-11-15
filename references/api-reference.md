@@ -444,6 +444,8 @@ Track a custom goal event.
 - `visitorUid` (string, recommended): the `_fs_vid` cookie value of a visitor the tracking script has already seen, so the completion attaches to that visitor's sessions and source. Omit it for an anonymous completion.
 - `name` (string, required): Goal name: lowercase letters, numbers, underscores, hyphens only; max 64 chars. The goal is created on first use.
 - `metadata` (object, optional): Up to 10 string key-value pairs.
+- `sessionUid` (string, optional): the `_fs_sid` cookie value. Ties the completion to that session; without it a server-side call uses the visitor's latest active session.
+- `timezone` (string, optional): the visitor's IANA timezone (`Europe/Berlin`). Helps place the visitor in a country when the call comes from a server or proxy.
 
 **Response (200 OK):**
 
@@ -482,7 +484,9 @@ Record a payment for revenue attribution.
 
 **Required:** `amount` (number), `currency` (string), `transactionId` (string)
 
-**Optional:** `visitorUid`, `sessionUid`, `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean), `timestamp` (ISO 8601, defaults to now)
+**Optional:** `visitorUid`, `sessionUid`, `timezone` (the visitor's IANA timezone), `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean), `timestamp` (ISO 8601, defaults to now), `customerIp`, `customerUserAgent` (max 1024 characters)
+
+`customerIp` and `customerUserAgent` are the buyer's IP and User-Agent at checkout, for a server-side call that cannot match the payment to a visitor. Flowsery keeps only the country it resolves from the IP and the browser, OS and device it resolves from the User-Agent. A `customerIp` that is not an IP address answers `400`.
 
 An omitted `currency` is stored as `USD`, not the website currency, so always send it.
 
@@ -582,6 +586,8 @@ The full OpenAPI 3 spec, and the one endpoint that needs no authentication, so a
 - `400`: invalid input, a workspace token with no `websiteId` or `domain`, a delete with no filter, or `GET /workspaces` with a website key
 - `401`: API key missing or invalid (`Invalid or missing analytics API key`)
 - `401` with `code: token_issuer_lost_access`: the member who created the token left the workspace or was deactivated
+- `401` with `code: oauth_account_not_found`: an OAuth sign-in whose email has no Flowsery account; the message names the email
+- `403` with `code: permission_denied`: the token's role lacks the permission the call needs; `requiredPermission` names it and `role` is the role the token carries
 - `403` with `code: subscription_required`: the workspace plan no longer includes API access
 - `403` with `code: workspace_access_denied`: `X-Workspace-Id` named a workspace the key does not belong to
 - `403` `Upgrade to view this issue`: a free-trial issue beyond the first 10

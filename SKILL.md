@@ -2,7 +2,7 @@
 name: flowsery
 description: Query web analytics data from Flowsery Analytics, a privacy-first web analytics platform. Retrieve real-time visitors, time series, breakdowns (device, page, country, referrer, campaign, channel, exit link, and 25 dimensions total), visitor profiles with activity timelines, and the bugs, broken flows and UX problems the AI found in session recordings. Only after explicit user confirmation, it can also create goal and payment records and permanently delete goal events and payment records. Visitor profiles and payments include personal data (email, name, location, revenue), so handle them as PII. Use when the user wants to check their website traffic, analyze visitor behavior, view revenue data, track conversions, or manage goal/payment records on their Flowsery-tracked sites.
 homepage: https://flowsery.com
-version: 1.2.0
+version: 1.3.0
 metadata: { 'openclaw': { 'emoji': '📊', 'primaryEnv': 'FLOWSERY_API_KEY', 'requires': { 'env': ['FLOWSERY_API_KEY'] } } }
 ---
 
@@ -211,6 +211,8 @@ curl -X POST https://analytics.flowsery.com/analytics/api/v1/goals \
 - `name` (required): lowercase letters, numbers, underscores, hyphens; max 64 chars. The goal is created on first use, so there is no setup call.
 - `visitorUid` (recommended): the `_fs_vid` cookie value of a visitor the tracking script has already seen, so the completion attaches to that visitor's sessions and source. Omit it to record an anonymous completion.
 - `metadata` (optional): up to 10 string key-value pairs; more than 10 returns `400`
+- `sessionUid` (optional): the `_fs_sid` cookie value, which ties the completion to that session
+- `timezone` (optional): the visitor's IANA timezone, which helps place them in a country when the call comes from a server
 
 Each call appends one completion, so repeating it counts the goal twice and there is no undo for a single completion. Send it once, and do not retry a call that may have gone through. Use `POST /payments` for revenue, which records a `payment` goal on its own.
 
@@ -234,7 +236,7 @@ curl -X POST https://analytics.flowsery.com/analytics/api/v1/payments \
   }'
 ```
 
-Required: `amount`, `currency`, `transactionId`. Optional: `visitorUid`, `sessionUid`, `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean), `timestamp` (ISO 8601, defaults to now). An omitted `currency` is stored as `USD`, not the website currency, so always send it.
+Required: `amount`, `currency`, `transactionId`. Optional: `visitorUid`, `sessionUid`, `timezone`, `email`, `name`, `customerId`, `isRenewal` (boolean), `isRefund` (boolean), `timestamp` (ISO 8601, defaults to now), `customerIp` and `customerUserAgent` (max 1024 characters). The last two are the buyer's IP and User-Agent at checkout, for a server-side call that cannot match the payment to a visitor; Flowsery keeps only the country, browser, OS and device it resolves from them. Send them only when the user supplied them. An omitted `currency` is stored as `USD`, not the website currency, so always send it.
 
 Behavior to know before calling:
 
@@ -350,6 +352,8 @@ curl -s -H "Authorization: Bearer $FLOWSERY_API_KEY" \
 | 400 | | Invalid input, no website selected with a workspace token, or a delete with no filter |
 | 401 | | Missing, invalid or revoked API key |
 | 401 | `token_issuer_lost_access` | The member who created the token left the workspace or was deactivated. The token is dead |
+| 401 | `oauth_account_not_found` | An OAuth sign-in whose email has no Flowsery account. The message names the email; sign in with the email used on Flowsery |
+| 403 | `permission_denied` | The token's role cannot make this call. `requiredPermission` names the missing permission and `role` the token's role; Editor and Admin can write, Contributor and Viewer cannot. A workspace admin has to change the role |
 | 403 | `subscription_required` | The workspace plan no longer includes API access. A new token will not help until the plan is renewed |
 | 403 | `workspace_access_denied` | `X-Workspace-Id` named a workspace other than the token's own. Leave the header out |
 | 403 | | `Upgrade to view this issue`: a free-trial issue beyond the first 10 |
